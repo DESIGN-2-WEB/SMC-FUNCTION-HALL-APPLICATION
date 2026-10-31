@@ -19,14 +19,14 @@ For development with live reload: `npm run dev` → http://localhost:5173
 
 ## Online demo (Vercel)
 
-1. Import this repo at [vercel.com/new](https://vercel.com/new). No build settings needed — `vercel.json` configures everything.
-2. In **Project → Settings → Environment Variables** add `JWT_SECRET` (any long random text), then redeploy.
-   This keeps sign-ins valid across Vercel's server instances.
+Import this repo at [vercel.com/new](https://vercel.com/new). No settings needed — `vercel.json` configures everything.
 
 On Vercel the app runs in demo mode: the login page shows `admin` / `admin123` with a **Fill in** button.
 The data lives in Vercel's temporary storage and resets whenever Vercel starts a fresh instance,
 so don't keep real hotel data there. For permanent online use, move the database to a hosted one (e.g. Turso).
-Set `DEMO_MODE=false` to hide the demo sign-in.
+
+To turn the demo off, set `DEMO_MODE=false` **and** `JWT_SECRET` (any long random text) in
+**Project → Settings → Environment Variables**. Without `JWT_SECRET` the app refuses to start outside demo mode.
 
 ## Default logins
 

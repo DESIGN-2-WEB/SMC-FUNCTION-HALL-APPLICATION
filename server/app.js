@@ -1,6 +1,7 @@
 import express from 'express';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { ON_VERCEL } from './config.js';
 import { ROOT } from './db.js';
 import { migrate, seed } from './schema.js';
 import api from './routes/index.js';
@@ -10,7 +11,7 @@ seed();
 
 const app = express();
 // Behind Vercel's proxy every request comes through it; locally only loopback proxies are trusted
-app.set('trust proxy', process.env.VERCEL ? true : 'loopback');
+app.set('trust proxy', ON_VERCEL ? true : 'loopback');
 app.use(express.json({ limit: '1mb' }));
 app.use('/api', api);
 

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import { DEMO } from '../config.js';
 import { all, get, log, run } from '../db.js';
 import { publicUser, requireAuth, signToken } from '../middleware/auth.js';
 
@@ -10,9 +11,6 @@ export default r;
 const failures = new Map();
 const WINDOW = 15 * 60 * 1000;
 
-// Demo deployments show the demo sign-in on the login page. On by default on Vercel
-// (its data is temporary anyway); DEMO_MODE=true/false overrides.
-const DEMO = process.env.DEMO_MODE ? process.env.DEMO_MODE === 'true' : !!process.env.VERCEL;
 r.get('/demo', (req, res) => res.json({ demo: DEMO }));
 
 // Names for the login dropdown (no passwords or ids exposed)
