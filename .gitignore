@@ -1,0 +1,13 @@
+node_modules
+dist
+
+# Live database and JWT secret — never commit
+data
+*.db
+*.db-journal
+secret.key
+
+# Local editor / tool settings
+.claude
+.vscode
+*.log
