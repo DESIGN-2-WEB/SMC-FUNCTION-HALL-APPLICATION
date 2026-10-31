@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const dataDir = process.env.DATA_DIR || join(ROOT, 'data');
+// Vercel functions can only write to /tmp, which is temporary — fine for the demo
+const dataDir = process.env.DATA_DIR || (process.env.VERCEL ? '/tmp/penta-kedarnath' : join(ROOT, 'data'));
 mkdirSync(dataDir, { recursive: true });
 
 export const db = new DatabaseSync(join(dataDir, 'hotel.db'));

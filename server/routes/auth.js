@@ -10,8 +10,10 @@ export default r;
 const failures = new Map();
 const WINDOW = 15 * 60 * 1000;
 
-// Public demo deployments (DEMO_MODE=true) show the demo sign-in on the login page
-r.get('/demo', (req, res) => res.json({ demo: process.env.DEMO_MODE === 'true' }));
+// Demo deployments show the demo sign-in on the login page. On by default on Vercel
+// (its data is temporary anyway); DEMO_MODE=true/false overrides.
+const DEMO = process.env.DEMO_MODE ? process.env.DEMO_MODE === 'true' : !!process.env.VERCEL;
+r.get('/demo', (req, res) => res.json({ demo: DEMO }));
 
 // Names for the login dropdown (no passwords or ids exposed)
 r.get('/users', (req, res) =>

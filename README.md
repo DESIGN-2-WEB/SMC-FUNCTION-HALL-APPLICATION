@@ -17,13 +17,16 @@ Open **http://localhost:4000**. Other computers/phones on the same Wi-Fi can ope
 
 For development with live reload: `npm run dev` → http://localhost:5173
 
-## Online demo
+## Online demo (Vercel)
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Dev02005/Penta-Kedaranath-hotel-app)
+1. Import this repo at [vercel.com/new](https://vercel.com/new). No build settings needed — `vercel.json` configures everything.
+2. In **Project → Settings → Environment Variables** add `JWT_SECRET` (any long random text), then redeploy.
+   This keeps sign-ins valid across Vercel's server instances.
 
-The demo runs with `DEMO_MODE=true`, which shows the `admin` / `admin123` sign-in on the login page.
-On Render's free plan the data is temporary: it resets whenever the service restarts or sleeps
-(after ~15 minutes without visitors), and the first visit after sleeping takes up to a minute to wake.
+On Vercel the app runs in demo mode: the login page shows `admin` / `admin123` with a **Fill in** button.
+The data lives in Vercel's temporary storage and resets whenever Vercel starts a fresh instance,
+so don't keep real hotel data there. For permanent online use, move the database to a hosted one (e.g. Turso).
+Set `DEMO_MODE=false` to hide the demo sign-in.
 
 ## Default logins
 
@@ -60,8 +63,10 @@ On Render's free plan the data is temporary: it resets whenever the service rest
 ## Code layout
 
 ```
+api/index.js          Vercel serverless entry (wraps server/app.js)
 server/
-  index.js            app setup, static files, error handler
+  app.js              Express app: API, static files, error handler
+  index.js            local server (listens on PORT, default 4000)
   db.js               SQLite connection + query helpers
   schema.js           tables + first-run seed data
   lib/http.js         input validation & error helpers
