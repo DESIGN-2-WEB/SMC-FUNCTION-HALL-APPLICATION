@@ -17,6 +17,14 @@ Open **http://localhost:4000**. Other computers/phones on the same Wi-Fi can ope
 
 For development with live reload: `npm run dev` → http://localhost:5173
 
+## Online demo
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Dev02005/Penta-Kedaranath-hotel-app)
+
+The demo runs with `DEMO_MODE=true`, which shows the `admin` / `admin123` sign-in on the login page.
+On Render's free plan the data is temporary: it resets whenever the service restarts or sleeps
+(after ~15 minutes without visitors), and the first visit after sleeping takes up to a minute to wake.
+
 ## Default logins
 
 | Username | Password   | Role  |
