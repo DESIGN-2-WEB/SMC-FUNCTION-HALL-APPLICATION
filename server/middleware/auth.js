@@ -1,16 +1,27 @@
 import jwt from 'jsonwebtoken';
-import { get, secret } from '../db.js';
+import { get, run, secret } from '../db.js';
 
 export const publicUser = u => ({ id: u.id, username: u.username, name: u.name, role: u.role });
-export const signToken = u => jwt.sign({ id: u.id }, secret, { expiresIn: '7d' });
+export const signToken = (u, sid = null) => jwt.sign({ id: u.id, sid }, secret, { expiresIn: '7d' });
 
 export function requireAuth(req, res, next) {
   const token = (req.headers.authorization || '').replace(/^Bearer /, '');
   try {
-    const { id } = jwt.verify(token, secret);
-    const user = get('SELECT * FROM users WHERE id = ? AND active = 1', id);
+    const payload = jwt.verify(token, secret);
+    const user = get('SELECT * FROM users WHERE id = ? AND active = 1', payload.id);
     if (!user) throw new Error('inactive');
     req.user = publicUser(user);
+    req.sessionId = payload.sid || null;
+
+    // Refresh last active timestamp for current session
+    if (req.sessionId) {
+      try {
+        run("UPDATE user_sessions SET last_active_at = datetime('now', 'localtime') WHERE id = ? AND status = 'active'", req.sessionId);
+      } catch {
+        // non-blocking
+      }
+    }
+
     next();
   } catch {
     res.status(401).json({ error: 'Please sign in again' });

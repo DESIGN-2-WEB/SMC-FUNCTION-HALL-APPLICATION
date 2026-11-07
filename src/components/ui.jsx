@@ -88,6 +88,7 @@ const ACCENTS = {
   ink: 'bg-ink-900 text-gold-300',
   gold: 'bg-gold-100 text-gold-700',
   green: 'bg-emerald-50 text-emerald-600',
+  amber: 'bg-amber-100 text-amber-700',
   rose: 'bg-rose-50 text-rose-600',
   blue: 'bg-sky-50 text-sky-600',
   violet: 'bg-violet-50 text-violet-600',

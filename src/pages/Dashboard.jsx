@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router';
 import {
   ArrowRight, BedDouble, CalendarDays, Crown, History, IndianRupee, LogIn, LogOut, Package, PartyPopper, Plus, Snowflake,
-  TrendingUp, TriangleAlert, Wallet, Wrench,
+  Sparkles, TrendingUp, TriangleAlert, Wallet, Wrench,
 } from 'lucide-react';
 import { useApi } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
@@ -37,8 +37,9 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="gold" icon={Plus} onClick={() => nav('/rooms?new=1')}>Room booking</Button>
+            <Button variant="gold" icon={Sparkles} onClick={() => nav('/halls?package=1')}>Bulk Event Package</Button>
             <Button icon={Plus} className="bg-white/10 hover:bg-white/15" onClick={() => nav('/halls?new=1')}>Hall booking</Button>
+            <Button icon={Plus} className="bg-white/10 hover:bg-white/15" onClick={() => nav('/rooms?new=1')}>Room booking</Button>
           </div>
         </div>
       </div>
@@ -155,19 +156,28 @@ export default function Dashboard() {
         </Card>
         {isAdmin && (
           <Card>
-            <CardHeader icon={History} title="Recent activity" action={<Button variant="ghost" size="sm" onClick={() => nav('/activity')}>Full log <ArrowRight size={14} /></Button>} />
-            <div className="divide-y divide-stone-100">
-              {data.recent.map(a => (
-                <div key={a.id} className="flex items-start gap-3 px-5 py-3">
-                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-gold-400" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm"><b className="font-semibold">{a.user_name || 'Someone'}</b> {a.action}</p>
-                    {a.details && <p className="truncate text-xs text-stone-500">{a.details}</p>}
+            <CardHeader
+              icon={History}
+              title="Recent activity"
+              subtitle="Showing last 7 actions (7-day retention)"
+              action={<Button variant="ghost" size="sm" onClick={() => nav('/activity')}>Full log <ArrowRight size={14} /></Button>}
+            />
+            {data.recent.length ? (
+              <div className="divide-y divide-stone-100">
+                {data.recent.slice(0, 7).map(a => (
+                  <div key={a.id} className="flex items-start gap-3 px-5 py-3">
+                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-gold-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm"><b className="font-semibold">{a.user_name || 'Someone'}</b> {a.action}</p>
+                      {a.details && <p className="truncate text-xs text-stone-500">{a.details}</p>}
+                    </div>
+                    <p className="shrink-0 text-xs text-stone-400">{fmtDateTime(a.created_at)}</p>
                   </div>
-                  <p className="shrink-0 text-xs text-stone-400">{fmtDateTime(a.created_at)}</p>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState icon={History} title="No recent activity" text="Actions performed in the last 7 days will appear here." />
+            )}
           </Card>
         )}
       </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { BedDouble, Crown, Pencil, Plus, Search, Snowflake, Trash2, Users as UsersIcon, Wrench } from 'lucide-react';
+import { BedDouble, ChevronRight, Crown, Pencil, Plus, Search, Snowflake, Trash2, Users as UsersIcon, Wrench } from 'lucide-react';
 import { useApi, useDebounced, useRemove, useSave } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import BookingDetail from '../components/BookingDetail.jsx';
@@ -80,16 +80,27 @@ export default function Rooms() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-stone-100 bg-stone-50/60">
-                <tr><th className="th">Guest</th><th className="th">Room</th><th className="th">Stay</th><th className="th text-right">Amount</th><th className="th">Status</th></tr>
+                <tr>
+                  <th className="th">Guest</th>
+                  <th className="th">Room</th>
+                  <th className="th">Stay</th>
+                  <th className="th text-right">Amount</th>
+                  <th className="th">Status</th>
+                  <th className="th text-right w-16">Action</th>
+                </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
                 {bookings.data.map(b => {
                   const due = b.total - b.paid;
                   const n = nights(b.check_in, b.check_out);
                   return (
-                    <tr key={b.id} onClick={() => setDetailId(b.id)} className="cursor-pointer transition hover:bg-gold-50/40">
+                    <tr
+                      key={b.id}
+                      onClick={() => setDetailId(b.id)}
+                      className="group cursor-pointer transition-colors duration-150 hover:bg-gold-50/80"
+                    >
                       <td className="td">
-                        <p className="font-medium text-ink-900">{b.guest_name}</p>
+                        <p className="font-medium text-ink-900 group-hover:text-gold-900 transition-colors">{b.guest_name}</p>
                         <p className="text-xs text-stone-500">{b.phone || '—'}</p>
                       </td>
                       <td className="td whitespace-nowrap">{b.room_name}</td>
@@ -102,6 +113,11 @@ export default function Rooms() {
                         <p className={cn('text-xs', due > 0 ? 'text-rose-600' : 'text-emerald-600')}>{due > 0 ? `${inr(due)} due` : 'Paid'}</p>
                       </td>
                       <td className="td"><Badge tone={ROOM_STATUS[b.status].tone} dot>{ROOM_STATUS[b.status].label}</Badge></td>
+                      <td className="td text-right whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-400 group-hover:text-gold-800 group-hover:bg-gold-100/70 transition">
+                          View <ChevronRight size={14} className="transition-transform group-hover:translate-x-0.5" />
+                        </span>
+                      </td>
                     </tr>
                   );
                 })}

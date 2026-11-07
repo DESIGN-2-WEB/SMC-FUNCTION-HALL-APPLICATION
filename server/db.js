@@ -50,6 +50,16 @@ export const tx = fn => {
   }
 };
 
+export const pruneActivity = () => {
+  try {
+    db.prepare("DELETE FROM activity WHERE created_at < datetime('now', 'localtime', '-7 days')").run();
+  } catch (err) {
+    console.error('Failed to prune old activity logs:', err.message);
+  }
+};
+
 export const today = () => new Date().toLocaleDateString('en-CA');
-export const log = (userId, action, details = '') =>
-  run('INSERT INTO activity (user_id, action, details) VALUES (?, ?, ?)', userId, action, details);
+export const log = (userId, action, details = '') => {
+  pruneActivity();
+  return run('INSERT INTO activity (user_id, action, details) VALUES (?, ?, ?)', userId, action, details);
+};

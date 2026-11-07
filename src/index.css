@@ -66,8 +66,22 @@ body {
   .td {
     @apply px-4 py-3.5 align-middle;
   }
+  tr.cursor-pointer,
+  tr.cursor-pointer td,
+  tr.cursor-pointer th,
+  tr.cursor-pointer * {
+    cursor: pointer !important;
+  }
 }
 
 @media print {
   .no-print { display: none !important; }
+}
+
+/* Suppress native browser password reveal eye and clear icons (Microsoft Edge / IE) */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }

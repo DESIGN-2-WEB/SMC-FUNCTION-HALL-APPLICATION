@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { all, get, today } from '../db.js';
+import { all, get, pruneActivity, today } from '../db.js';
 import { roomsWithStatus } from './rooms.js';
 
 const r = Router();
@@ -47,7 +47,10 @@ r.get('/dashboard', (req, res) => {
     lowStock: all('SELECT * FROM supplies WHERE quantity <= min_quantity ORDER BY quantity * 1.0 / MAX(min_quantity, 1) LIMIT 8'),
     trend: lastSixMonths(),
     recent: req.user.role === 'admin'
-      ? all('SELECT a.*, u.name AS user_name FROM activity a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.id DESC LIMIT 8')
+      ? (() => {
+          pruneActivity();
+          return all("SELECT a.*, u.name AS user_name FROM activity a LEFT JOIN users u ON u.id = a.user_id WHERE a.created_at >= datetime('now', 'localtime', '-7 days') ORDER BY a.id DESC LIMIT 7");
+        })()
       : [],
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { WEEKDAYS, addDays, fmtDate, monthGrid, shiftMonth, today } from '../utils.js';
 import { cn } from './ui.jsx';
 
@@ -94,49 +94,91 @@ function useListNav(items, onPick) {
 }
 
 function OptionList({ items, active, setActive, isSelected, onPick, render }) {
+  if (!items.length) {
+    return <div className="px-3 py-4 text-center text-xs text-stone-400">No matching options</div>;
+  }
   return (
     <ul role="listbox" className="max-h-64 overflow-y-auto">
-      {items.map((item, i) => (
-        <li
-          key={i}
-          role="option"
-          aria-selected={isSelected(item)}
-          ref={el => i === active && el?.scrollIntoView({ block: 'nearest' })}
-          onMouseEnter={() => setActive(i)}
-          onClick={() => onPick(item)}
-          className={cn(
-            'flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors',
-            i === active ? 'bg-gold-50 text-ink-900' : 'text-stone-700',
-            isSelected(item) && 'font-semibold text-ink-900',
-          )}
-        >
-          <span className="min-w-0 flex-1">{render(item)}</span>
-          {isSelected(item) && <Check size={15} className="shrink-0 text-gold-600" />}
-        </li>
-      ))}
+      {items.map((item, i) => {
+        const isDisabled = !!item.disabled;
+        const selected = isSelected(item);
+        return (
+          <li
+            key={i}
+            role="option"
+            aria-selected={selected}
+            aria-disabled={isDisabled}
+            ref={el => i === active && el?.scrollIntoView({ block: 'nearest' })}
+            onMouseEnter={() => !isDisabled && setActive(i)}
+            onClick={() => !isDisabled && onPick(item)}
+            className={cn(
+              'flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors',
+              isDisabled
+                ? 'opacity-40 cursor-not-allowed bg-stone-50/50 text-stone-400'
+                : 'cursor-pointer text-stone-700',
+              !isDisabled && i === active && 'bg-gold-50 text-ink-900',
+              selected && 'font-semibold text-ink-900',
+            )}
+          >
+            <span className="min-w-0 flex-1">{render(item)}</span>
+            {selected && <Check size={15} className="shrink-0 text-gold-600" />}
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-const normalize = o => (typeof o === 'object' ? o : { value: o, label: String(o) });
+const normalize = o => (typeof o === 'object' && o !== null ? o : { value: o, label: String(o) });
 
-/** Dropdown. `options`: strings or { value, label, hint }. `onChange` receives the value. */
-export function Select({ value, onChange, options, placeholder = 'Select…', icon: Icon, className }) {
+/** Dropdown. `options`: strings or { value, label, hint, disabled }. `onChange` receives the value. */
+export function Select({ value, onChange, options = [], placeholder = 'Select…', icon: Icon, className, searchable }) {
   const opts = options.map(normalize);
   const current = opts.find(o => String(o.value) === String(value));
+  const [query, setQuery] = useState('');
   const btn = useRef(null);
-  const pick = o => { onChange(o.value); nav.setOpen(false); };
-  const nav = useListNav(opts, pick);
-  const show = () => { nav.setActive(Math.max(0, opts.indexOf(current))); nav.setOpen(true); };
+  const searchInput = useRef(null);
+
+  const shouldSearch = searchable ?? (opts.length > 7);
+  const filtered = shouldSearch && query.trim()
+    ? opts.filter(o =>
+        String(o.label || '').toLowerCase().includes(query.toLowerCase()) ||
+        String(o.hint || '').toLowerCase().includes(query.toLowerCase()) ||
+        String(o.value || '').toLowerCase().includes(query.toLowerCase())
+      )
+    : opts;
+
+  const pick = o => {
+    if (o.disabled) return;
+    onChange(o.value);
+    nav.setOpen(false);
+    setQuery('');
+  };
+
+  const nav = useListNav(filtered, pick);
+  const show = () => {
+    setQuery('');
+    nav.setActive(Math.max(0, filtered.indexOf(current)));
+    nav.setOpen(true);
+  };
 
   const onKeyDown = e => {
     if (!nav.open && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault();
       return show();
     }
-    if (nav.open && e.key === ' ') { e.preventDefault(); return opts[nav.active] && pick(opts[nav.active]); }
+    if (nav.open && e.key === ' ' && !shouldSearch) {
+      e.preventDefault();
+      return filtered[nav.active] && pick(filtered[nav.active]);
+    }
     nav.onKeyDown(e);
   };
+
+  useEffect(() => {
+    if (nav.open && shouldSearch) {
+      setTimeout(() => searchInput.current?.focus(), 40);
+    }
+  }, [nav.open, shouldSearch]);
 
   return (
     <>
@@ -154,9 +196,28 @@ export function Select({ value, onChange, options, placeholder = 'Select…', ic
         <span className={cn('min-w-0 flex-1 truncate', !current && 'text-stone-400')}>{current ? current.label : placeholder}</span>
         <ChevronDown size={16} className={cn('shrink-0 text-stone-400 transition-transform', nav.open && 'rotate-180')} />
       </button>
-      <Popover anchor={btn} open={nav.open} onClose={() => nav.setOpen(false)}>
+      <Popover anchor={btn} open={nav.open} onClose={() => { nav.setOpen(false); setQuery(''); }}>
+        {shouldSearch && (
+          <div className="border-b border-stone-100 p-1.5 mb-1">
+            <div className="relative">
+              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+              <input
+                ref={searchInput}
+                type="text"
+                value={query}
+                onChange={e => {
+                  setQuery(e.target.value);
+                  nav.setActive(0);
+                }}
+                onKeyDown={nav.onKeyDown}
+                placeholder="Search options…"
+                className="w-full rounded-lg bg-stone-50 py-1.5 pl-8 pr-2.5 text-xs text-ink-900 placeholder:text-stone-400 border border-stone-200 outline-none focus:border-gold-500 focus:bg-white focus:ring-1 focus:ring-gold-500"
+              />
+            </div>
+          </div>
+        )}
         <OptionList
-          items={opts}
+          items={filtered}
           active={nav.active}
           setActive={nav.setActive}
           isSelected={o => o === current}

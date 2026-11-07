@@ -1,6 +1,29 @@
-# Penta Kedarnath — Hotel & Function Hall Manager
+# SMC Function Hall (A/C) — Kalyana Mandapam & Function Hall
+**Banner name:** Penta Jayashankararao  
+**Address:** Next to BOI (Bank of India), K.T. Road, Palasa – Kasibugga  
+**Contact:** 94411 17278 / 94410 89616  
+**Facilities:** A/C halls, parking, rooms and lift available  
+**Events:** Wedding, Engagement, Half Saree, Birthday, Meetings  
 
-Management system for 1 suite, 4 AC rooms, 2 banquet halls (big & small) and supply stock.
+### Hall Rent
+| Hall | Full Day (Marriage) | Half Day (Function) |
+|---|---|---|
+| **Big banquet hall** | ₹75,000 | ₹42,000 |
+| **Small banquet hall** | ₹40,000 | ₹25,000 |
+| **Both halls combo** | ₹90,000 | ₹47,000 |
+
+### Extra charges (not included in rent)
+- **Power bill:** ₹15 per unit (`Units = Ending reading − Starting reading`)
+- **Generator (charged per hour of use):**
+  - 120 kVA: ₹1,500/hr
+  - 30 kVA: ₹450/hr
+
+**Final bill formula:**  
+$$\text{Final bill} = \text{Hall rent} + \text{Power bill} + \text{Generator bill}$$
+
+*Example:* Big hall half day (₹42,000) + 200 units (₹3,000) + 120 kVA generator for 3 hrs (₹4,500) = **₹49,500**
+
+---
 
 **Stack:** React 19 + Vite + Tailwind CSS 4 (frontend) · Node.js + Express 5 (API) · SQLite via Node's built-in `node:sqlite` (no database server to install) · JWT logins with bcrypt-hashed passwords.
 

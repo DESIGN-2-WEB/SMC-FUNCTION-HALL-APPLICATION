@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { all, get, log, run, today, tx } from '../db.js';
 import { fail, found, inr, isDate, num, str } from '../lib/http.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { getDBSettings } from './settings.js';
 
 /*
  * Room bookings and hall bookings share one flow (list, view, create, edit,
@@ -22,16 +23,22 @@ const KINDS = {
     order: 'b.check_in DESC, b.id DESC',
     statuses: ['reserved', 'checked_in', 'checked_out', 'cancelled'],
     active: ['reserved', 'checked_in'],
-    fields: ['room_id', 'guest_name', 'phone', 'id_proof', 'address', 'guests', 'check_in', 'check_out', 'rate', 'total', 'notes'],
-    initialStatus: () => 'reserved',
+    fields: ['room_id', 'guest_name', 'phone', 'id_proof', 'id_photo_taken', 'address', 'guests', 'check_in', 'check_out', 'rate', 'discount', 'total', 'notes'],
+    initialStatus: b => (b.status === 'checked_in' ? 'checked_in' : 'reserved'),
     parse(b) {
+      const discount = Math.max(0, num(b.discount));
+      const id_photo_taken = b.id_photo_taken ? 1 : 0;
       const d = {
         room_id: num(b.room_id), guest_name: str(b.guest_name), phone: str(b.phone), id_proof: str(b.id_proof),
+        id_photo_taken,
         address: str(b.address), guests: Math.max(1, Math.round(num(b.guests, 1))), check_in: str(b.check_in),
-        check_out: str(b.check_out), rate: num(b.rate), total: num(b.total), notes: str(b.notes),
+        check_out: str(b.check_out), rate: num(b.rate), discount, total: num(b.total), notes: str(b.notes),
       };
       if (!get('SELECT id FROM rooms WHERE id = ?', d.room_id)) fail('Please choose a room');
       if (!d.guest_name) fail('Guest name is required');
+      if (!d.phone) fail('Guest phone number is required');
+      if (!d.id_proof) fail('ID proof number is required');
+      if (!d.id_photo_taken) fail('Please confirm that ID photo has been taken');
       if (!isDate(d.check_in) || !isDate(d.check_out)) fail('Check-in and check-out dates are required');
       if (d.check_out <= d.check_in) fail('Check-out must be after check-in');
       if (d.rate < 0 || d.total < 0) fail('Amounts cannot be negative');
@@ -55,13 +62,67 @@ const KINDS = {
     order: 'b.event_date DESC, b.id DESC',
     statuses: ['tentative', 'confirmed', 'completed', 'cancelled'],
     active: ['tentative', 'confirmed'],
-    fields: ['hall_id', 'customer_name', 'phone', 'event_type', 'event_date', 'slot', 'guests', 'total', 'notes'],
+    fields: [
+      'hall_id', 'customer_name', 'phone', 'event_type', 'event_date', 'slot', 'guests',
+      'rent', 'power_start', 'power_end', 'power_units', 'power_rate', 'power_amount',
+      'generator_type', 'generator_hours', 'generator_rate', 'generator_amount',
+      'total', 'notes'
+    ],
     initialStatus: b => (b.status === 'tentative' ? 'tentative' : 'confirmed'),
     parse(b) {
+      const rent = num(b.rent);
+      const power_start = num(b.power_start);
+      const power_end = num(b.power_end);
+      let power_units = num(b.power_units);
+      if (power_end > power_start && (!b.power_units || power_units === 0)) {
+        power_units = Math.max(0, power_end - power_start);
+      }
+      const settings = getDBSettings();
+      const defaultPowerRate = Number(settings.power_rate) || 15;
+      const power_rate = b.power_rate !== undefined && b.power_rate !== '' ? num(b.power_rate) : defaultPowerRate;
+      const power_amount = num(b.power_amount) || Math.round(power_units * power_rate);
+
+      const generator_type = str(b.generator_type);
+      const generator_hours = num(b.generator_hours);
+
+      let generators = [];
+      try {
+        generators = typeof settings.generators === 'string' ? JSON.parse(settings.generators) : (settings.generators || []);
+      } catch {
+        generators = [];
+      }
+      if (!Array.isArray(generators) || generators.length === 0) {
+        generators = [
+          { name: '120 kVA', rate: Number(settings.gen_120kva_rate) || 1500 },
+          { name: '30 kVA', rate: Number(settings.gen_30kva_rate) || 450 },
+        ];
+      }
+
+      let defaultGenRate = 0;
+      if (generator_type) {
+        const found = generators.find(g => g.name && g.name.trim().toLowerCase() === generator_type.trim().toLowerCase());
+        if (found) {
+          defaultGenRate = Number(found.rate) || 0;
+        } else if (generator_type.includes('120')) {
+          defaultGenRate = Number(settings.gen_120kva_rate) || 1500;
+        } else if (generator_type.includes('30')) {
+          defaultGenRate = Number(settings.gen_30kva_rate) || 450;
+        }
+      }
+      const generator_rate = b.generator_rate !== undefined && b.generator_rate !== '' ? num(b.generator_rate) : defaultGenRate;
+      const generator_amount = num(b.generator_amount) || Math.round(generator_hours * generator_rate);
+
+      let total = num(b.total);
+      if (rent > 0 && (!b.total || total === 0 || b.auto_calc)) {
+        total = rent + power_amount + generator_amount;
+      }
+
       const d = {
         hall_id: num(b.hall_id), customer_name: str(b.customer_name), phone: str(b.phone), event_type: str(b.event_type),
         event_date: str(b.event_date), slot: SLOT_NAMES[b.slot] ? b.slot : 'full', guests: Math.max(0, Math.round(num(b.guests))),
-        total: num(b.total), notes: str(b.notes),
+        rent, power_start, power_end, power_units, power_rate, power_amount,
+        generator_type, generator_hours, generator_rate, generator_amount,
+        total: Math.max(0, total), notes: str(b.notes),
       };
       if (!get('SELECT id FROM halls WHERE id = ?', d.hall_id)) fail('Please choose a hall');
       if (!d.customer_name) fail('Customer name is required');
@@ -70,11 +131,45 @@ const KINDS = {
       return d;
     },
     conflict(d, id) {
-      const c = get(`SELECT customer_name, slot FROM hall_bookings
-                     WHERE hall_id = ? AND id <> ? AND event_date = ? AND status IN ('tentative','confirmed')
-                     AND (slot = ? OR slot = 'full' OR ? = 'full')`,
-        d.hall_id, id, d.event_date, d.slot, d.slot);
-      return c && `Hall is already booked by ${c.customer_name} for the ${SLOT_NAMES[c.slot]} on that date`;
+      const chosen = get('SELECT id, name, is_combo, included_hall_ids FROM halls WHERE id = ?', d.hall_id);
+      if (!chosen) return null;
+
+      let affectedIds = [chosen.id];
+      if (chosen.is_combo || /combo/i.test(chosen.name)) {
+        try {
+          const parsed = JSON.parse(chosen.included_hall_ids || '[]');
+          if (Array.isArray(parsed) && parsed.length > 0) affectedIds = parsed;
+        } catch {}
+      }
+
+      const allBookings = all(
+        `SELECT b.id, b.customer_name, b.slot, b.hall_id, h.name AS hall_name, h.is_combo, h.included_hall_ids
+         FROM hall_bookings b
+         JOIN halls h ON h.id = b.hall_id
+         WHERE b.id <> ? AND b.event_date = ? AND b.status IN ('tentative','confirmed')
+         AND (b.slot = ? OR b.slot = 'full' OR ? = 'full')`,
+        id, d.event_date, d.slot, d.slot
+      );
+
+      for (const b of allBookings) {
+        let bookedAffected = [b.hall_id];
+        if (b.is_combo || /combo/i.test(b.hall_name)) {
+          try {
+            const parsed = JSON.parse(b.included_hall_ids || '[]');
+            if (Array.isArray(parsed) && parsed.length > 0) bookedAffected = parsed;
+          } catch {}
+        }
+
+        const overlap = affectedIds.some(aid => bookedAffected.includes(aid))
+          || (chosen.is_combo && b.is_combo)
+          || (chosen.is_combo && bookedAffected.includes(chosen.id))
+          || (b.is_combo && affectedIds.includes(b.hall_id));
+
+        if (overlap) {
+          return `${b.hall_name || 'Hall'} is already booked by ${b.customer_name} for the ${SLOT_NAMES[b.slot]} on that date`;
+        }
+      }
+      return null;
     },
     label: b => `${b.customer_name} · ${b.event_type || 'Event'} · ${b.event_date}`,
   },
@@ -128,10 +223,11 @@ function bookingRouter(kind) {
       const cols = [...K.fields, 'status', 'created_by'];
       const { id } = run(`INSERT INTO ${K.table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
         ...K.fields.map(f => d[f]), K.initialStatus(req.body), req.user.id);
-      if (advance > 0) addPayment(kind, id, advance, str(req.body.method), 'Advance', today(), req.user.id);
+      if (advance > 0) addPayment(kind, id, advance, str(req.body.method), kind === 'room' ? (advance >= d.total ? 'Full Payment' : 'Advance') : 'Advance', today(), req.user.id);
       return id;
     });
-    log(req.user.id, `${kind} booking created`, K.label(d) + (advance > 0 ? ` · advance ${inr(advance)}` : ''));
+    const payNote = advance > 0 ? (kind === 'room' ? (advance >= d.total ? ` · full payment ${inr(advance)}` : ` · advance ${inr(advance)}`) : ` · advance ${inr(advance)}`) : '';
+    log(req.user.id, `${kind} booking created`, K.label(d) + payNote);
     res.status(201).json(load(id));
   });
 

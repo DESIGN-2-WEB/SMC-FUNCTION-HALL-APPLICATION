@@ -37,6 +37,29 @@ export const fmtShort = d => fmtDate(d, { day: 'numeric', month: 'short' });
 export const fmtDateTime = s =>
   s ? new Date(s.replace(' ', 'T')).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—';
 
+export const fmtTime = s =>
+  s ? new Date(s.replace(' ', 'T')).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : '—';
+
+export const fmtDuration = sec => {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const remM = m % 60;
+  return remM ? `${h}h ${remM}m` : `${h}h`;
+};
+
+export const fmtDurationWords = sec => {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  if (s < 60) return `${s} sec`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min${m > 1 ? 's' : ''}`;
+  const h = Math.floor(m / 60);
+  const remM = m % 60;
+  return remM ? `${h} hr${h > 1 ? 's' : ''} ${remM} min${remM > 1 ? 's' : ''}` : `${h} hr${h > 1 ? 's' : ''}`;
+};
+
 export const relDay = d => {
   const diff = nights(today(), d);
   if (d === today()) return 'Today';
@@ -71,6 +94,39 @@ export const ROOM_STATE = {
   maintenance: { label: 'Maintenance', tone: 'amber' },
 };
 
+export const PROPERTY = {
+  name: 'SMC Function Hall (A/C)',
+  shortName: 'SMC Function Hall',
+  tagline: 'Kalyana Mandapam & Function Hall',
+  banner: 'Penta Jayashankararao',
+  address: 'Next to BOI (Bank of India), K.T. Road, Palasa – Kasibugga',
+  phones: ['94411 17278', '94410 89616'],
+  contactDisplay: '94411 17278 / 94410 89616',
+  facilities: 'A/C halls, parking, rooms and lift available',
+};
+
+export const GENERATOR_RATES = {
+  '120 kVA': 1500,
+  '30 kVA': 450,
+};
+
+export const GENERATOR_OPTIONS = [
+  { value: '', label: 'None' },
+  { value: '120 kVA', label: '120 kVA (₹1,500/hr)' },
+  { value: '30 kVA', label: '30 kVA (₹450/hr)' },
+];
+
+export const POWER_UNIT_RATE = 15;
+
 export const SLOTS = { morning: 'Morning', evening: 'Evening', full: 'Full day' };
 export const METHODS = ['Cash', 'UPI', 'Card', 'Bank transfer', 'Cheque'];
-export const EVENT_TYPES = ['Wedding', 'Reception', 'Engagement', 'Birthday', 'Corporate', 'Religious function', 'Meeting', 'Other'];
+export const EVENT_TYPES = [
+  'Wedding',
+  'Engagement',
+  'Half Saree',
+  'Birthday',
+  'Meetings',
+  'Reception',
+  'Corporate',
+  'Other',
+];

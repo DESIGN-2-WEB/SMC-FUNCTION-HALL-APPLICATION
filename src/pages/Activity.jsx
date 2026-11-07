@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { History, Search } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { ArrowLeft, History, Search } from 'lucide-react';
 import { useApi } from '../hooks.js';
-import { Avatar, Badge, Card, EmptyState, Input, PageHeader, PageLoader } from '../components/ui.jsx';
+import { Avatar, Badge, Button, Card, EmptyState, Input, PageHeader, PageLoader } from '../components/ui.jsx';
 import { fmtDate } from '../utils.js';
 
 export default function Activity() {
   const { data } = useApi('/activity');
+  const nav = useNavigate();
   const [q, setQ] = useState('');
   if (!data) return <PageLoader />;
 
@@ -19,13 +21,21 @@ export default function Activity() {
 
   return (
     <>
-      <PageHeader title="Activity Log" subtitle="Who did what — the latest 300 actions"
+      <PageHeader
+        title="Activity Log"
+        subtitle="Complete audit log of actions within the past 7 days (older logs are automatically cleaned up)"
         actions={
-          <div className="relative w-64">
-            <Search size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-stone-400" />
-            <Input className="pl-9" placeholder="Filter activity" value={q} onChange={e => setQ(e.target.value)} />
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="outline" size="sm" icon={ArrowLeft} onClick={() => nav('/')}>
+              Dashboard
+            </Button>
+            <div className="relative w-64">
+              <Search size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-stone-400" />
+              <Input className="pl-9" placeholder="Filter activity" value={q} onChange={e => setQ(e.target.value)} />
+            </div>
           </div>
-        } />
+        }
+      />
       {rows.length ? (
         <div className="space-y-6">
           {Object.entries(groups).map(([day, items]) => (

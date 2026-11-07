@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { all, get, log, run } from '../db.js';
+import { all, get, log, pruneActivity, run } from '../db.js';
 import { fail, found, str } from '../lib/http.js';
 
 // Both routers are mounted behind requireAdmin
@@ -53,5 +53,121 @@ r.delete('/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-activity.get('/', (req, res) =>
-  res.json(all('SELECT a.*, u.name AS user_name, u.role FROM activity a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.id DESC LIMIT 300')));
+r.get('/sessions', (req, res) => {
+  // Auto-close stale sessions inactive for > 30 minutes
+  run(`
+    UPDATE user_sessions
+    SET status = 'timed_out',
+        logout_time = last_active_at,
+        duration_seconds = MAX(0, CAST((strftime('%s', last_active_at) - strftime('%s', login_time)) AS INTEGER))
+    WHERE status = 'active'
+      AND last_active_at < datetime('now', 'localtime', '-30 minutes')
+  `);
+
+  const userId = req.query.user_id ? Number(req.query.user_id) : null;
+  const status = str(req.query.status);
+  const period = str(req.query.period) || 'all';
+  const q = str(req.query.q);
+
+  const where = [];
+  const args = [];
+
+  if (userId) {
+    where.push('s.user_id = ?');
+    args.push(userId);
+  }
+
+  if (status && status !== 'all') {
+    where.push('s.status = ?');
+    args.push(status);
+  }
+
+  if (period === 'today') {
+    where.push("s.login_time >= date('now', 'localtime')");
+  } else if (period === 'yesterday') {
+    where.push("s.login_time >= date('now', 'localtime', '-1 day') AND s.login_time < date('now', 'localtime')");
+  } else if (period === 'week') {
+    where.push("s.login_time >= date('now', 'localtime', '-7 days')");
+  }
+
+  if (q) {
+    where.push('(u.name LIKE ? OR u.username LIKE ? OR s.ip_address LIKE ? OR s.device_info LIKE ?)');
+    args.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+  }
+
+  const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+  const sessions = all(`
+    SELECT s.*,
+           u.name AS user_name,
+           u.username,
+           u.role,
+           CASE
+             WHEN s.status = 'active' THEN MAX(0, CAST((strftime('%s', 'now', 'localtime') - strftime('%s', s.login_time)) AS INTEGER))
+             ELSE s.duration_seconds
+           END AS duration_seconds_calc
+    FROM user_sessions s
+    JOIN users u ON u.id = s.user_id
+    ${whereClause}
+    ORDER BY (s.status = 'active') DESC, s.id DESC
+    LIMIT 500
+  `, ...args);
+
+  // Overall metrics for owner
+  const activeNowList = all(`
+    SELECT s.id, s.user_id, u.name AS user_name, u.role, s.login_time, s.device_info, s.ip_address,
+           MAX(0, CAST((strftime('%s', 'now', 'localtime') - strftime('%s', s.login_time)) AS INTEGER)) AS duration_seconds
+    FROM user_sessions s
+    JOIN users u ON u.id = s.user_id
+    WHERE s.status = 'active'
+    ORDER BY s.id DESC
+  `);
+
+  const todayStats = get(`
+    SELECT COUNT(*) AS count,
+           COALESCE(SUM(
+             CASE
+               WHEN status = 'active' THEN MAX(0, CAST((strftime('%s', 'now', 'localtime') - strftime('%s', login_time)) AS INTEGER))
+               ELSE duration_seconds
+             END
+           ), 0) AS total_duration_seconds,
+           COUNT(DISTINCT user_id) AS unique_staff
+    FROM user_sessions
+    WHERE login_time >= date('now', 'localtime')
+  `) || { count: 0, total_duration_seconds: 0, unique_staff: 0 };
+
+  res.json({
+    sessions,
+    metrics: {
+      active_now_count: activeNowList.length,
+      active_now_staff: activeNowList,
+      today_sessions_count: todayStats.count,
+      today_duration_seconds: todayStats.total_duration_seconds,
+      today_unique_staff: todayStats.unique_staff,
+    },
+  });
+});
+
+// Force sign-out / end active session (Admin only)
+r.post('/sessions/:id/terminate', (req, res) => {
+  const session = found(get('SELECT * FROM user_sessions WHERE id = ?', req.params.id), 'Session');
+  if (session.status !== 'active') fail('This session is not currently active');
+
+  run(`
+    UPDATE user_sessions
+    SET status = 'logged_out',
+        logout_time = datetime('now', 'localtime'),
+        last_active_at = datetime('now', 'localtime'),
+        duration_seconds = MAX(0, CAST((strftime('%s', 'now', 'localtime') - strftime('%s', login_time)) AS INTEGER))
+    WHERE id = ?
+  `, session.id);
+
+  const u = get('SELECT name FROM users WHERE id = ?', session.user_id);
+  log(req.user.id, 'terminated staff session', `${u?.name || 'User'} (Session #${session.id})`);
+  res.json({ ok: true });
+});
+
+activity.get('/', (req, res) => {
+  pruneActivity();
+  res.json(all("SELECT a.*, u.name AS user_name, u.role FROM activity a LEFT JOIN users u ON u.id = a.user_id WHERE a.created_at >= datetime('now', 'localtime', '-7 days') ORDER BY a.id DESC"));
+});

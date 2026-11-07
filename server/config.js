@@ -1,3 +1,7 @@
+try {
+  process.loadEnvFile?.();
+} catch {}
+
 export const ON_VERCEL = !!process.env.VERCEL;
 
 // Demo deployments show the demo sign-in on the login page. On by default on Vercel

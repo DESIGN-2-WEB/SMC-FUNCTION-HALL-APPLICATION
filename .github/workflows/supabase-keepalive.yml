@@ -1,0 +1,30 @@
+name: Supabase Keep-Alive Ping
+
+on:
+  schedule:
+    # Runs daily at 00:00 UTC (resets the 7-day inactivity timer every 24 hours)
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allows manual one-click trigger from GitHub Actions tab
+
+jobs:
+  keepalive:
+    name: Prevent Inactivity Pause
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Auth & API
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          URL="${SUPABASE_URL:-https://nvfawinosokzlppvhcgj.supabase.co}"
+          KEY="${SUPABASE_ANON_KEY:-sb_publishable_YzhpDoNLnUoFI9gvaALkSA_2jYE1ROU}"
+          echo "Sending keep-alive ping to $URL..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$URL/auth/v1/health" \
+            -H "apikey: $KEY" \
+            -H "Authorization: Bearer $KEY")
+          echo "Supabase response code: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 204 ]; then
+            echo "Success: Supabase project is active and 7-day inactivity pause has been reset!"
+          else
+            echo "Ping registered with HTTP $HTTP_STATUS, resetting inactivity countdown."
+          fi

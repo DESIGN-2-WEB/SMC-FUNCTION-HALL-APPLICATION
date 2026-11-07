@@ -6,8 +6,11 @@ data
 *.db
 *.db-journal
 secret.key
+.env
+.env*.local
 
 # Local editor / tool settings
 .claude
 .vscode
 *.log
+scratch/
