@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Hotel & function hall management system for Penta Kedarnath",
   "scripts": {
-    "dev": "concurrently -k -n api,web -c yellow,cyan \"node --disable-warning=ExperimentalWarning --watch server/index.js\" \"vite\"",
+    "dev": "concurrently -k -n api,web -c yellow,cyan \"node --disable-warning=ExperimentalWarning --watch-path=server --watch server/index.js\" \"vite\"",
     "build": "vite build",
     "start": "node --disable-warning=ExperimentalWarning server/index.js",
     "serve": "vite build && node --disable-warning=ExperimentalWarning server/index.js"
