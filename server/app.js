@@ -6,8 +6,12 @@ import { ROOT } from './db.js';
 import { migrate, seed } from './schema.js';
 import api from './routes/index.js';
 
-migrate();
-seed();
+try {
+  migrate();
+  seed();
+} catch (err) {
+  console.error('Database migration/seed error:', err);
+}
 
 const app = express();
 // Behind Vercel's proxy every request comes through it; locally only loopback proxies are trusted

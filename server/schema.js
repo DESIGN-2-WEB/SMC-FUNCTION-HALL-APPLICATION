@@ -388,7 +388,8 @@ export const CATERING_ITEMS = [
 export const SUPPLIES = CATERING_ITEMS;
 
 const USERS = [
-  ['admin', 'Administrator', 'admin123', 'admin'],
+  ['admin', 'Penta Jayashankararao', 'admin123', 'admin'],
+  ['kedarnath', 'Penta Kedarnath', 'admin123', 'admin'],
   ['staff1', 'Front Desk', 'staff123', 'staff'],
   ['staff2', 'Hall Supervisor', 'staff123', 'staff'],
 ];
@@ -440,9 +441,19 @@ export function seed() {
     for (const hall of HALLS)
       run('INSERT INTO halls (name, capacity, rate_full, rate_half, description) VALUES (?, ?, ?, ?, ?)', ...hall);
     for (const [name, category, unit, qty, min, rate] of SUPPLIES) {
-      const { id } = run('INSERT INTO supplies (name, category, unit, quantity, total_quantity, rented_quantity, min_quantity, rent_rate, unit_cost) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)',
-        name, category, unit, qty, qty, min, rate, rate);
-      run("INSERT INTO stock_moves (supply_id, type, quantity, balance, note) VALUES (?, 'in', ?, ?, 'Initial inventory added')", id, qty, qty);
+      const existing = get('SELECT id FROM supplies WHERE name = ?', name);
+      let supplyId = existing?.id;
+      if (!supplyId) {
+        const res = run('INSERT OR IGNORE INTO supplies (name, category, unit, quantity, total_quantity, rented_quantity, min_quantity, rent_rate, unit_cost) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)',
+          name, category, unit, qty, qty, min, rate, rate);
+        supplyId = res.id;
+      }
+      if (supplyId) {
+        const hasMove = get('SELECT id FROM stock_moves WHERE supply_id = ? LIMIT 1', supplyId);
+        if (!hasMove) {
+          run("INSERT INTO stock_moves (supply_id, type, quantity, balance, note) VALUES (?, 'in', ?, ?, 'Initial inventory added')", supplyId, qty, qty);
+        }
+      }
     }
   });
 }
