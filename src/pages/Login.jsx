@@ -1,14 +1,11 @@
 import { useEffect, useState } from 'react';
-import { BedDouble, Eye, EyeOff, KeyRound, Lock, Package, PartyPopper, UserRound } from 'lucide-react';
+import { BedDouble, Eye, EyeOff, Lock, Package, PartyPopper, UserRound } from 'lucide-react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
 import { Brand } from '../components/Layout.jsx';
 import { Button, Form } from '../components/ui.jsx';
 import { Select } from '../components/pickers.jsx';
-
-// Shown only when the server runs with DEMO_MODE=true
-const DEMO = { username: 'admin', password: 'admin123' };
 
 const FEATURES = [
   [BedDouble, 'Suite & AC rooms', 'Bookings, check-ins and payments'],
@@ -25,7 +22,6 @@ export default function Login() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [demo, setDemo] = useState(false);
 
   useEffect(() => {
     api('/auth/users')
@@ -34,13 +30,7 @@ export default function Login() {
         setUsername(list[0]?.username ?? '');
       })
       .catch(() => setError('Cannot reach the server. Is it running?'));
-    api('/auth/demo').then(d => setDemo(d.demo)).catch(() => {});
   }, []);
-
-  const fillDemo = () => {
-    setUsername(DEMO.username);
-    setPassword(DEMO.password);
-  };
 
   const submit = async () => {
     setError('');
@@ -108,17 +98,6 @@ export default function Login() {
           <div className="mb-10 lg:hidden"><Brand light={false} /></div>
           <h2 className="font-display text-3xl font-semibold text-ink-900">Welcome back</h2>
           <p className="mt-2 text-sm text-stone-500">Choose your login and enter your password.</p>
-
-          {demo && (
-            <div className="mt-6 flex items-center gap-3 rounded-2xl border border-gold-200 bg-gold-50 p-4">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gold-400 text-ink-900"><KeyRound size={18} /></div>
-              <div className="min-w-0 flex-1 text-sm">
-                <p className="font-semibold text-ink-900">Demo access</p>
-                <p className="text-stone-600">Administrator · password <b className="font-mono">{DEMO.password}</b></p>
-              </div>
-              <Button type="button" size="sm" variant="gold" onClick={fillDemo}>Fill in</Button>
-            </div>
-          )}
 
           <Form onSubmit={submit} className="mt-8 space-y-4">
             <label className="block">

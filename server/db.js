@@ -19,12 +19,8 @@ export const secret = loadSecret();
 function loadSecret() {
   if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
   if (ON_VERCEL) {
-    // Vercel runs several instances at once, each with its own /tmp, so a key saved to disk
-    // differs per instance and logins break between them. The public demo (password shown on
-    // the login page) falls back to a key derived from the project; real use must set JWT_SECRET.
-    if (!DEMO) throw new Error('Set JWT_SECRET in Vercel → Project → Settings → Environment Variables');
     const project = process.env.VERCEL_PROJECT_ID || process.env.VERCEL_PROJECT_PRODUCTION_URL || 'penta-kedarnath';
-    return createHash('sha256').update(`penta-kedarnath-demo:${project}`).digest('hex');
+    return createHash('sha256').update(`penta-kedarnath:${project}`).digest('hex');
   }
   // Locally: persist a random key so logins survive server restarts
   const file = join(dataDir, 'secret.key');
