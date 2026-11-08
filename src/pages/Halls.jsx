@@ -9,6 +9,7 @@ import BookingDetail from '../components/BookingDetail.jsx';
 import { HallBookingForm } from '../components/BookingForms.jsx';
 import BulkPackageModal from '../components/BulkPackageModal.jsx';
 import PackageDetailModal from '../components/PackageDetailModal.jsx';
+import ComboTable from '../components/ComboTable.jsx';
 import WhatsAppModal from '../components/WhatsAppModal.jsx';
 import {
   Badge, Button, Card, EmptyState, Field, Form, Input, Modal, PageHeader, PageLoader, Segmented, Textarea, cn, useUI,
@@ -17,7 +18,7 @@ import { HALL_STATUS, SLOTS, fmtDate, inr, relDay, today } from '../utils.js';
 
 const FILTERS = [
   { value: 'upcoming', label: 'Upcoming' },
-  { value: 'packages', label: '✨ Bulk Packages' },
+  { value: 'packages', label: '✨ Combos' },
   { value: 'tentative', label: 'Tentative' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
@@ -139,7 +140,7 @@ export default function Halls() {
             icon={Sparkles}
             onClick={() => setBulkPackageModal(true)}
           >
-            Bulk Event Package
+            Combo booking
           </Button>
           <Button variant="outline" icon={Plus} onClick={() => setForm({})}>
             New Hall Booking
@@ -414,102 +415,15 @@ export default function Halls() {
         </div>
         {filter === 'packages' ? (
           packagesList.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-stone-100 bg-stone-50/60">
-                  <tr>
-                    <th className="th">Event Date</th>
-                    <th className="th">Customer & Event</th>
-                    <th className="th">Hall Booked</th>
-                    <th className="th">Guest Rooms</th>
-                    <th className="th">Catering Rentals</th>
-                    <th className="th text-right">Package Total</th>
-                    <th className="th">Status</th>
-                    <th className="th text-right w-16">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100">
-                  {packagesList.map(pkg => {
-                    const due = pkg.balance ?? (pkg.total_amount - pkg.advance_paid);
-                    return (
-                      <tr
-                        key={pkg.id}
-                        onClick={() => setSelectedPackageId(pkg.id)}
-                        className="group cursor-pointer transition-colors duration-150 hover:bg-gold-50/80"
-                      >
-                        <td className="td whitespace-nowrap">
-                          <p className="font-semibold text-ink-900 group-hover:text-gold-900 transition-colors">
-                            {fmtDate(pkg.event_date)}
-                          </p>
-                          <p className="text-xs text-stone-500">
-                            {pkg.slot === 'half' ? '½ Day' : 'Full Day'} · {relDay(pkg.event_date)}
-                          </p>
-                        </td>
-                        <td className="td">
-                          <p className="font-semibold text-ink-900 group-hover:text-gold-900 transition-colors">
-                            {pkg.customer_name}
-                          </p>
-                          <p className="text-xs text-stone-600 font-medium">{pkg.event_type || 'Function'}</p>
-                          <p className="text-xs text-stone-400">{pkg.phone}</p>
-                        </td>
-                        <td className="td whitespace-nowrap">
-                          <span className="font-medium text-ink-900">{pkg.hall_name || 'No Hall'}</span>
-                          {pkg.hall_amount > 0 && (
-                            <span className="text-xs text-stone-400 block">{inr(pkg.hall_amount)}</span>
-                          )}
-                        </td>
-                        <td className="td whitespace-nowrap">
-                          {pkg.rooms_count > 0 ? (
-                            <span className="rounded-md bg-stone-100 px-2 py-0.5 text-xs font-semibold text-ink-800">
-                              {pkg.rooms_count} rooms ({inr(pkg.rooms_amount)})
-                            </span>
-                          ) : (
-                            <span className="text-stone-400 text-xs">—</span>
-                          )}
-                        </td>
-                        <td className="td whitespace-nowrap">
-                          {pkg.supplies_count > 0 ? (
-                            <span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
-                              {pkg.supplies_count} items ({inr(pkg.supplies_amount)})
-                            </span>
-                          ) : (
-                            <span className="text-stone-400 text-xs">—</span>
-                          )}
-                        </td>
-                        <td className="td text-right whitespace-nowrap">
-                          <p className="font-bold text-ink-900">{inr(pkg.total_amount)}</p>
-                          <p className={cn('text-xs font-medium', due > 0 ? 'text-rose-600' : 'text-emerald-700')}>
-                            {due > 0 ? `${inr(due)} due` : 'Paid'}
-                          </p>
-                        </td>
-                        <td className="td">
-                          {pkg.status === 'cancelled' ? (
-                            <Badge tone="rose">Cancelled</Badge>
-                          ) : due === 0 ? (
-                            <Badge tone="green" dot>Paid</Badge>
-                          ) : (
-                            <Badge tone="amber" dot>Confirmed</Badge>
-                          )}
-                        </td>
-                        <td className="td text-right whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-400 group-hover:text-gold-800 group-hover:bg-gold-100/70 transition">
-                            View <ChevronRight size={14} className="transition-transform group-hover:translate-x-0.5" />
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <ComboTable combos={packagesList} onOpen={setSelectedPackageId} />
           ) : (
             <EmptyState
               icon={Sparkles}
-              title={packagesApi.loading ? 'Loading packages…' : 'No bulk event packages found'}
-              text={q ? 'No packages match your search.' : 'Book a hall, guest rooms, and catering rentals in one combined package.'}
+              title={packagesApi.loading ? 'Loading combos…' : 'No combos found'}
+              text={q ? 'No combos match your search.' : 'Book a hall, guest rooms and catering supplies on one combined bill.'}
               action={
                 <Button variant="gold" icon={Sparkles} onClick={() => setBulkPackageModal(true)}>
-                  Create Bulk Event Package
+                  New combo
                 </Button>
               }
             />

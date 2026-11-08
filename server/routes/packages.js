@@ -44,13 +44,19 @@ const loadPackage = id => {
     ORDER BY s.category, s.name
   `, pkg.id);
 
-  // Payments
-  const payments = pkg.hall_booking_id
-    ? all("SELECT p.*, u.name AS created_by_name FROM payments p LEFT JOIN users u ON u.id = p.created_by WHERE (p.kind = 'hall' AND p.booking_id = ?) OR p.note LIKE ? ORDER BY p.id",
-        pkg.hall_booking_id, `%Package #${pkg.id}%`)
-    : [];
+  // Payments: package advances/payments (matched by their note) plus any taken on the hall booking
+  const payments = all(`
+    SELECT p.*, u.name AS created_by_name FROM payments p LEFT JOIN users u ON u.id = p.created_by
+    WHERE p.note LIKE ? OR p.note LIKE ? OR p.note = ?
+       OR (p.kind = 'hall' AND p.booking_id > 0 AND p.booking_id = ?)
+    ORDER BY p.paid_on, p.id
+  `, `Package Advance for #${pkg.id} ·%`, `Package Payment for #${pkg.id} ·%`, `Package Payment for #${pkg.id}`,
+    pkg.hall_booking_id || 0);
 
-  const balance = Math.max(0, pkg.total_amount - pkg.advance_paid);
+  // Power & generator charges entered later on the combo's hall booking belong on the combined bill
+  const extras_amount = hall ? (Number(hall.power_amount) || 0) + (Number(hall.generator_amount) || 0) : 0;
+  const grand_total = (Number(pkg.total_amount) || 0) + extras_amount;
+  const balance = Math.max(0, grand_total - pkg.advance_paid);
 
   return {
     ...pkg,
@@ -58,9 +64,15 @@ const loadPackage = id => {
     rooms,
     supplies,
     payments,
+    extras_amount,
+    grand_total,
     balance,
   };
 };
+
+const SLOTS = ['full', 'morning', 'evening', 'half'];
+const nightsBetween = (a, b) =>
+  Math.max(1, Math.round((new Date(`${b}T00:00:00`) - new Date(`${a}T00:00:00`)) / 86400000));
 
 // GET /packages: List all event packages
 r.get('/', (req, res) => {
@@ -88,7 +100,8 @@ r.get('/', (req, res) => {
       hb.slot AS hall_slot,
       (SELECT COUNT(*) FROM room_bookings rb WHERE rb.package_id = p.id) AS rooms_count,
       (SELECT COUNT(*) FROM supply_rentals sr WHERE sr.package_id = p.id) AS supplies_count,
-      (p.total_amount - p.advance_paid) AS balance
+      (p.total_amount + COALESCE(hb.power_amount, 0) + COALESCE(hb.generator_amount, 0)) AS grand_total,
+      MAX(0, p.total_amount + COALESCE(hb.power_amount, 0) + COALESCE(hb.generator_amount, 0) - p.advance_paid) AS balance
     FROM event_packages p
     LEFT JOIN hall_bookings hb ON hb.id = p.hall_booking_id
     LEFT JOIN halls h ON h.id = hb.hall_id
@@ -119,6 +132,7 @@ r.post('/', (req, res) => {
   if (!customer_name) fail('Customer name is required');
   if (!phone) fail('Customer phone number is required');
   if (!isDate(event_date)) fail('Valid event date is required');
+  if (!SLOTS.includes(slot)) fail('Choose a valid hall slot');
 
   const check_in_date = str(req.body.check_in_date) || event_date;
   const check_out_date = str(req.body.check_out_date) || addDays(event_date, 1);
@@ -129,7 +143,7 @@ r.post('/', (req, res) => {
   let hall_amount = 0;
   if (hall_id) {
     hall = found(get('SELECT * FROM halls WHERE id = ?', hall_id), 'Hall');
-    hall_amount = num(req.body.hall_rent !== undefined ? req.body.hall_rent : (slot === 'half' ? hall.rate_half : hall.rate_full));
+    hall_amount = num(req.body.hall_rent !== undefined ? req.body.hall_rent : (slot === 'full' ? hall.rate_full : hall.rate_half));
 
     // Check hall clash
     let conflictSql = `
@@ -189,11 +203,16 @@ r.post('/', (req, res) => {
         AND check_in < ? AND check_out > ?
     `, room.id, rCheckOut, rCheckIn);
 
+    if (!isDate(rCheckIn) || !isDate(rCheckOut) || rCheckOut <= rCheckIn)
+      fail(`Room ${room.number}: check-out must be after check-in`);
+
     if (roomConflict) {
       fail(`Room ${room.number} (${room.name}) is already booked for ${roomConflict.guest_name} (${roomConflict.check_in} → ${roomConflict.check_out})`, 409);
     }
 
-    rooms_amount += rRate;
+    // Rooms are charged per night
+    const rTotal = rRate * nightsBetween(rCheckIn, rCheckOut);
+    rooms_amount += rTotal;
     selectedRooms.push({
       room_id: room.id,
       room_name: room.name,
@@ -201,6 +220,7 @@ r.post('/', (req, res) => {
       check_in: rCheckIn,
       check_out: rCheckOut,
       rate: rRate,
+      total: rTotal,
       guests: rGuests,
     });
   }
@@ -276,7 +296,7 @@ r.post('/', (req, res) => {
         ) VALUES (?, ?, ?, ?, 'Package Booking', '', ?, ?, ?, ?, ?, 0, 1, 'reserved', ?, ?)
       `,
         packageId, rm.room_id, customer_name, phone, rm.guests,
-        rm.check_in, rm.check_out, rm.rate, rm.rate,
+        rm.check_in, rm.check_out, rm.rate, rm.total,
         `Part of Event Package #${packageId} (${event_type})`, req.user.id
       );
       roomBookingIds.push(rbRes.id);

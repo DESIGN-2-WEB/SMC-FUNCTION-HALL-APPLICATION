@@ -35,7 +35,7 @@ import {
   cn,
   useUI,
 } from './ui.jsx';
-import { SLOTS, addDays, fmtDate, inr, today } from '../utils.js';
+import { SLOTS, addDays, fmtDate, inr, nights, today } from '../utils.js';
 import { Select } from './pickers.jsx';
 
 export default function BulkPackageModal({ onClose, onSaved }) {
@@ -50,7 +50,8 @@ export default function BulkPackageModal({ onClose, onSaved }) {
   // Customer & Event State
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
-  const [eventType, setEventType] = useState('Wedding');
+  const eventTypes = (settings.event_types || 'Wedding, Other').split(',').map(s => s.trim()).filter(Boolean);
+  const [eventType, setEventType] = useState(() => eventTypes[0] || 'Wedding');
   const [eventDate, setEventDate] = useState(() => today());
   const [slot, setSlot] = useState('full');
   const [checkInDate, setCheckInDate] = useState(() => today());
@@ -96,13 +97,14 @@ export default function BulkPackageModal({ onClose, onSaved }) {
 
   // Calculate Hall Amount
   const chosenHall = halls.find(h => h.id === selectedHallId);
-  const defaultHallRent = chosenHall ? (slot === 'half' ? chosenHall.rate_half : chosenHall.rate_full) : 0;
+  const defaultHallRent = chosenHall ? (slot === 'full' ? chosenHall.rate_full : chosenHall.rate_half) : 0;
   const hallAmount = chosenHall ? (customHallRent !== '' ? Number(customHallRent) || 0 : defaultHallRent) : 0;
 
-  // Calculate Rooms Amount
+  // Calculate Rooms Amount (rate per night x nights)
+  const stayNights = Math.max(1, nights(checkInDate, checkOutDate));
   const roomsAmount = Object.entries(selectedRooms).reduce((sum, [rId, rData]) => {
     if (!rData.selected) return sum;
-    return sum + (Number(rData.rate) || 0);
+    return sum + (Number(rData.rate) || 0) * stayNights;
   }, 0);
 
   const selectedRoomsCount = Object.values(selectedRooms).filter(r => r.selected).length;
@@ -175,6 +177,9 @@ export default function BulkPackageModal({ onClose, onSaved }) {
     if (!selectedHallId && selectedRoomsCount === 0 && selectedSuppliesCount === 0) {
       return toast('Please select at least a Hall, Rooms, or Catering items', 'error');
     }
+    if (selectedRoomsCount > 0 && !(checkOutDate > checkInDate)) {
+      return toast('Rooms check-out must be after check-in', 'error');
+    }
 
     setSaving(true);
     try {
@@ -220,7 +225,7 @@ export default function BulkPackageModal({ onClose, onSaved }) {
         body: payload,
       });
 
-      toast(`Bulk Event Package created for ${customerName}! Total: ${inr(grandTotal)}`);
+      toast(`Combo booked for ${customerName}. Total: ${inr(grandTotal)}`);
       onSaved(res);
     } catch (err) {
       toast(err.message, 'error');
@@ -231,13 +236,13 @@ export default function BulkPackageModal({ onClose, onSaved }) {
   return (
     <Modal
       size="xl"
-      title="All-in-One Bulk Event Package Booking"
-      subtitle="Book hall, multiple guest rooms, and catering rental items in one consolidated booking"
+      title="New Combo Booking"
+      subtitle="Pick any mix of hall, rooms and supplies. Everything goes on one combined bill."
       onClose={onClose}
       footer={
         <div className="flex w-full items-center justify-between gap-3">
           <div className="text-left">
-            <span className="text-xs text-stone-500 font-medium block">Package Total:</span>
+            <span className="text-xs text-stone-500 font-medium block">Combo Total:</span>
             <span className="font-display text-xl font-bold text-ink-900">{inr(grandTotal)}</span>
             {advanceAmount > 0 && (
               <span className="text-xs text-emerald-700 ml-2 font-medium">
@@ -256,7 +261,7 @@ export default function BulkPackageModal({ onClose, onSaved }) {
               icon={Sparkles}
               loading={saving}
             >
-              Confirm Bulk Package Booking
+              Confirm Combo Booking
             </Button>
           </div>
         </div>
@@ -295,7 +300,7 @@ export default function BulkPackageModal({ onClose, onSaved }) {
                 className="bg-white"
                 value={eventType}
                 onChange={v => setEventType(v)}
-                options={['Wedding', 'Reception', 'Half Saree', 'Birthday', 'Engagement', 'Meetings', 'Corporate', 'Other']}
+                options={eventTypes}
               />
             </Field>
           </div>
@@ -314,10 +319,7 @@ export default function BulkPackageModal({ onClose, onSaved }) {
                 value={slot}
                 onChange={setSlot}
                 className="w-full bg-white border border-stone-200"
-                options={[
-                  { value: 'full', label: 'Full Day' },
-                  { value: 'half', label: 'Half Day' },
-                ]}
+                options={Object.entries(SLOTS).map(([value, label]) => ({ value, label }))}
               />
             </Field>
             <div className="grid grid-cols-2 gap-2">
@@ -358,7 +360,7 @@ export default function BulkPackageModal({ onClose, onSaved }) {
           <div className="grid gap-3 sm:grid-cols-3">
             {halls.map(h => {
               const isCombo = !!h.is_combo;
-              const rate = slot === 'half' ? h.rate_half : h.rate_full;
+              const rate = slot === 'full' ? h.rate_full : h.rate_half;
               const isSelected = selectedHallId === h.id;
 
               return (
@@ -384,7 +386,7 @@ export default function BulkPackageModal({ onClose, onSaved }) {
                   <p className="font-bold text-ink-900 text-sm mt-2">
                     {inr(rate)}{' '}
                     <span className="text-[11px] font-normal text-stone-500">
-                      ({slot === 'half' ? '½ day' : 'full day'})
+                      ({SLOTS[slot]})
                     </span>
                   </p>
                   {isSelected && (
@@ -443,7 +445,7 @@ export default function BulkPackageModal({ onClose, onSaved }) {
               </button>
               {roomsAmount > 0 && (
                 <span className="ml-2 text-xs font-bold text-ink-900">
-                  Rooms: {inr(roomsAmount)}
+                  Rooms: {inr(roomsAmount)} ({stayNights} night{stayNights > 1 ? 's' : ''})
                 </span>
               )}
             </div>
@@ -477,7 +479,7 @@ export default function BulkPackageModal({ onClose, onSaved }) {
                       <p className="text-[11px] text-stone-400">{r.type}</p>
                     </div>
                   </div>
-                  <span className="font-bold text-xs text-ink-900">{inr(r.rate)}</span>
+                  <span className="font-bold text-xs text-ink-900">{inr(r.rate)}<span className="font-normal text-stone-400">/night</span></span>
                 </div>
               );
             })}
@@ -594,10 +596,10 @@ export default function BulkPackageModal({ onClose, onSaved }) {
             <div className="flex items-center gap-2">
               <Zap size={16} className="text-gold-700" />
               <h3 className="font-semibold text-xs tracking-wider uppercase text-ink-900">
-                5. Consolidated Package Billing & Advance
+                5. Combined Bill & Advance
               </h3>
             </div>
-            <span className="text-xs font-semibold text-stone-600">Unified Invoice</span>
+            <span className="text-xs font-semibold text-stone-600">One combined bill</span>
           </div>
 
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -615,7 +617,7 @@ export default function BulkPackageModal({ onClose, onSaved }) {
               </span>
               <p className="font-display text-lg font-bold text-ink-900 mt-1">{inr(roomsAmount)}</p>
               <span className="text-[11px] text-stone-400">
-                {selectedRoomsCount ? `${selectedRoomsCount} guest rooms` : 'No rooms'}
+                {selectedRoomsCount ? `${selectedRoomsCount} room${selectedRoomsCount > 1 ? 's' : ''} × ${stayNights} night${stayNights > 1 ? 's' : ''}` : 'No rooms'}
               </span>
             </div>
 

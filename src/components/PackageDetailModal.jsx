@@ -6,6 +6,7 @@ import {
   CreditCard,
   Landmark,
   MessageCircle,
+  Printer,
   RotateCcw,
   Sparkles,
   Trash2,
@@ -14,12 +15,14 @@ import {
 import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import { Badge, Button, Card, Field, Form, Input, Modal, cn, useUI } from './ui.jsx';
-import { fmtDate, fmtDateTime, inr } from '../utils.js';
+import { SLOTS, esc, fmtDate, fmtDateTime, inr, nights, today } from '../utils.js';
+import { useSettings } from '../settings.jsx';
 import { Select } from './pickers.jsx';
 import { WhatsAppIcon } from './WhatsAppModal.jsx';
 
 export default function PackageDetailModal({ packageId, onClose, onRefresh, onShareWa }) {
   const { toast } = useUI();
+  const { settings } = useSettings();
   const { data: pkg, reload } = useApi(`/packages/${packageId}`);
 
   // Payment State
@@ -34,6 +37,7 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
 
   const isCancelled = pkg.status === 'cancelled';
   const balance = Number(pkg.balance) || 0;
+  const grandTotal = Number(pkg.grand_total ?? pkg.total_amount) || 0;
 
   const handlePayment = async e => {
     e?.preventDefault?.();
@@ -60,13 +64,13 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
   };
 
   const handleCancelPackage = async () => {
-    if (!window.confirm(`Are you sure you want to cancel the entire package for ${pkg.customer_name}? This will release the hall, cancel room reservations, and restore all rented equipment back to inventory.`)) {
+    if (!window.confirm(`Are you sure you want to cancel the entire combo for ${pkg.customer_name}? This will release the hall, cancel room reservations, and restore all rented equipment back to inventory.`)) {
       return;
     }
     setCancelling(true);
     try {
       await api(`/packages/${pkg.id}/cancel`, { method: 'PATCH' });
-      toast('Event package cancelled. Inventory and bookings restored.');
+      toast('Combo cancelled. Hall, rooms and supplies released.');
       reload();
       onRefresh?.();
     } catch (err) {
@@ -80,8 +84,8 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
     <>
       <Modal
         size="lg"
-        title={pkg.package_name || 'Event Package Details'}
-        subtitle={`${pkg.customer_name} · ${pkg.phone} · ${fmtDate(pkg.event_date)} (${pkg.slot === 'half' ? '½ Day' : 'Full Day'})`}
+        title={`Combo #${pkg.id} · ${pkg.customer_name}`}
+        subtitle={`${pkg.customer_name} · ${pkg.phone} · ${fmtDate(pkg.event_date)} (${slotLabel(pkg.slot)})`}
         onClose={onClose}
         footer={
           <div className="flex w-full items-center justify-between gap-2">
@@ -93,11 +97,14 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
                   loading={cancelling}
                   onClick={handleCancelPackage}
                 >
-                  Cancel Package
+                  Cancel Combo
                 </Button>
               )}
             </div>
             <div className="flex items-center gap-2">
+              <Button variant="outline" icon={Printer} onClick={() => printComboBill(pkg, settings)}>
+                Print combined bill
+              </Button>
               <Button
                 variant="outline"
                 icon={WhatsAppIcon}
@@ -124,7 +131,7 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gold-200/60 pb-3">
               <div>
                 <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider block">
-                  Package Status
+                  Combo Status
                 </span>
                 <div className="flex items-center gap-2 mt-1">
                   {isCancelled ? (
@@ -145,16 +152,16 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
               </div>
 
               <div className="text-right">
-                <span className="text-xs text-stone-400 block">Package Grand Total</span>
+                <span className="text-xs text-stone-400 block">Combined Bill Total</span>
                 <span className="font-display text-2xl font-bold text-ink-900">
-                  {inr(pkg.total_amount)}
+                  {inr(grandTotal)}
                 </span>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3 pt-3 text-center">
               <div className="rounded-xl bg-white p-2.5 border border-stone-200/60">
-                <span className="text-[11px] text-stone-500 block">Advance Paid</span>
+                <span className="text-[11px] text-stone-500 block">Paid</span>
                 <span className="font-bold text-sm text-emerald-700">
                   {inr(pkg.advance_paid)}
                 </span>
@@ -181,19 +188,31 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
                   <span>1. Banquet Hall</span>
                 </div>
                 <span className="font-bold text-xs text-ink-900">
-                  {inr(pkg.hall_amount || pkg.hall.rent)}
+                  {inr((Number(pkg.hall_amount) || 0) + (Number(pkg.extras_amount) || 0))}
                 </span>
               </div>
               <div className="flex items-center justify-between pt-1">
                 <div>
                   <p className="font-semibold text-sm text-ink-900">{pkg.hall.hall_name}</p>
                   <p className="text-xs text-stone-500">
-                    Slot: {pkg.hall.slot === 'half' ? 'Half Day' : 'Full Day'} · Date:{' '}
+                    Slot: {slotLabel(pkg.hall.slot)} · Date:{' '}
                     {fmtDate(pkg.hall.event_date)}
                   </p>
                 </div>
                 <Badge tone="green">Hall Booked</Badge>
               </div>
+              {Number(pkg.hall.power_amount) > 0 && (
+                <div className="flex items-center justify-between text-xs text-stone-600">
+                  <span>Power bill ({pkg.hall.power_units} units @ ₹{pkg.hall.power_rate}/unit)</span>
+                  <span className="font-bold text-ink-900">{inr(pkg.hall.power_amount)}</span>
+                </div>
+              )}
+              {Number(pkg.hall.generator_amount) > 0 && (
+                <div className="flex items-center justify-between text-xs text-stone-600">
+                  <span>Generator ({pkg.hall.generator_type || 'Generator'} · {pkg.hall.generator_hours} hrs @ {inr(pkg.hall.generator_rate)}/hr)</span>
+                  <span className="font-bold text-ink-900">{inr(pkg.hall.generator_amount)}</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -217,10 +236,10 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
                         {r.room_number ? `Room ${r.room_number} — ${r.room_name}` : r.room_name}
                       </p>
                       <p className="text-stone-400 text-[11px]">
-                        {fmtDate(r.check_in)} → {fmtDate(r.check_out)} · {r.guests} guests
+                        {fmtDate(r.check_in)} → {fmtDate(r.check_out)} · {roomNights(r)} night{roomNights(r) > 1 ? 's' : ''} × {inr(r.rate)} · {r.guests} guests
                       </p>
                     </div>
-                    <span className="font-bold text-ink-900">{inr(r.rate)}</span>
+                    <span className="font-bold text-ink-900">{inr(r.total || r.rate)}</span>
                   </div>
                 ))}
               </div>
@@ -257,6 +276,26 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
             </div>
           )}
 
+          {/* Payments */}
+          <div className="rounded-xl border border-stone-200 bg-white p-4 space-y-2">
+            <div className="flex items-center gap-2 border-b border-stone-100 pb-2 text-xs font-semibold uppercase tracking-wider text-stone-600">
+              <CreditCard size={15} className="text-gold-700" />
+              <span>Payments received</span>
+            </div>
+            {pkg.payments?.length ? (
+              <div className="divide-y divide-stone-100">
+                {pkg.payments.map(p => (
+                  <div key={p.id} className="flex items-center justify-between py-1.5 text-xs">
+                    <span className="text-stone-600">{fmtDate(p.paid_on)} · {p.method}</span>
+                    <span className="font-bold text-emerald-700">{inr(p.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-stone-400">No payments yet.</p>
+            )}
+          </div>
+
           {/* Notes */}
           {pkg.notes && (
             <div className="rounded-xl bg-stone-50 p-3 text-xs text-stone-600">
@@ -271,7 +310,7 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
       {payModal && (
         <Modal
           size="sm"
-          title="Record Package Payment"
+          title="Record Combo Payment"
           subtitle={`Customer: ${pkg.customer_name} · Pending balance: ${inr(balance)}`}
           onClose={() => setPayModal(false)}
           footer={
@@ -331,4 +370,89 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
       )}
     </>
   );
+}
+
+const slotLabel = s => SLOTS[s] || (s === 'half' ? 'Half day' : 'Full day');
+const roomNights = r => Math.max(1, nights(r.check_in, r.check_out));
+
+/** One printable bill for everything in the combo: hall, extras, rooms, supplies, payments. */
+export function printComboBill(pkg, settings) {
+  const propName = settings?.property_name || 'SMC Function Hall (A/C)';
+  const bannerName = settings?.banner_name || '';
+  const tagline = settings?.property_tagline || 'Kalyana Mandapam & Function Hall';
+  const address = settings?.address || '';
+  const phone = settings?.phone || '';
+
+  // [item, details, qty, rate, amount]
+  const lines = [];
+  if (pkg.hall) {
+    lines.push(['Banquet Hall', `${pkg.hall.hall_name} · ${slotLabel(pkg.hall.slot)} · ${fmtDate(pkg.hall.event_date)}`, '1', inr(pkg.hall_amount), Number(pkg.hall_amount) || 0]);
+    if (Number(pkg.hall.power_amount) > 0)
+      lines.push(['Power bill', 'Electricity', `${pkg.hall.power_units} units`, `₹${pkg.hall.power_rate}/unit`, Number(pkg.hall.power_amount)]);
+    if (Number(pkg.hall.generator_amount) > 0)
+      lines.push(['Generator', pkg.hall.generator_type || 'Generator', `${pkg.hall.generator_hours} hrs`, `${inr(pkg.hall.generator_rate)}/hr`, Number(pkg.hall.generator_amount)]);
+  }
+  for (const r of pkg.rooms || []) {
+    const n = roomNights(r);
+    lines.push([`Room ${r.room_number || ''}`.trim(), `${r.room_name} · ${fmtDate(r.check_in)} → ${fmtDate(r.check_out)}`, `${n} night${n > 1 ? 's' : ''}`, `${inr(r.rate)}/night`, Number(r.total || r.rate) || 0]);
+  }
+  for (const s of pkg.supplies || []) {
+    lines.push([s.supply_name, s.supply_category || 'Supplies', `${s.quantity} ${s.supply_unit || 'pcs'}`, inr(s.rent_rate), Number(s.total_rent) || 0]);
+  }
+
+  const total = Number(pkg.grand_total ?? pkg.total_amount) || 0;
+  const paid = Number(pkg.advance_paid) || 0;
+  const due = Math.max(0, total - paid);
+  const dueColor = due > 0 ? '#dc2626' : '#6b7280';
+  const row = l => `<tr><td><b>${esc(l[0])}</b><div class="muted">${esc(l[1])}</div></td><td class="c">${esc(l[2])}</td><td class="r">${esc(l[3])}</td><td class="r">${esc(inr(l[4]))}</td></tr>`;
+  const pays = (pkg.payments || []).map(p => `<tr><td>${esc(fmtDate(p.paid_on))}</td><td>${esc(p.method)}</td><td class="r">${esc(inr(p.amount))}</td></tr>`).join('');
+
+  const w = window.open('', '_blank', 'width=800,height=900');
+  if (!w) return;
+  w.document.write(`<!doctype html><html><head><title>Combined Bill #C${pkg.id} - ${esc(propName)}</title><style>
+    body{font-family:Georgia,serif;color:#0e1a2b;max-width:700px;margin:30px auto;padding:0 24px}
+    h1{margin:0;font-size:24px}.banner{font-size:12px;color:#a57837;font-weight:bold;margin-top:2px}
+    .sub,.addr{font-family:Arial,sans-serif;font-size:12px;color:#555;margin-top:2px}.addr{font-size:11px;color:#777}
+    .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #d4ad5e;padding-bottom:16px;margin-bottom:20px}
+    table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px}td,th{padding:7px 4px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
+    th{font-size:11px;text-transform:uppercase;color:#888}.r{text-align:right;white-space:nowrap}.c{text-align:center;white-space:nowrap}
+    .muted{color:#888;font-size:11px;margin-top:2px}.tot td{font-weight:bold;border:none;font-size:14px}
+    h3{font-family:Arial,sans-serif;font-size:12px;text-transform:uppercase;color:#888;margin:24px 0 8px}
+    .foot{margin-top:40px;padding-top:16px;border-top:1px dashed #ddd;font-family:Arial,sans-serif;font-size:11px;color:#777;text-align:center}
+  </style></head><body>
+    <div class="head">
+      <div style="display:flex;align-items:center;gap:14px">
+        <img src="/logo.jpg" style="height:62px;width:auto;border-radius:8px" alt="" />
+        <div>
+          <h1>${esc(propName)}</h1>
+          ${bannerName ? `<div class="banner">Proprietor: ${esc(bannerName)}</div>` : ''}
+          <div class="sub">${esc(tagline)}</div>
+          <div class="addr">${esc(address)}<br>Contact: ${esc(phone)}</div>
+        </div>
+      </div>
+      <div style="text-align:right;font-family:Arial,sans-serif;font-size:12px;white-space:nowrap">
+        <b style="font-size:15px;color:#a57837">COMBINED BILL #C${pkg.id}</b><br>Date: ${esc(fmtDate(today()))}
+        ${pkg.status === 'cancelled' ? '<br><b style="color:#dc2626">CANCELLED</b>' : ''}
+      </div>
+    </div>
+    <table>
+      <tr><td style="width:30%;color:#888">Customer</td><td><b>${esc(pkg.customer_name)}</b></td></tr>
+      <tr><td style="color:#888">Phone</td><td>${esc(pkg.phone || '—')}</td></tr>
+      <tr><td style="color:#888">Event</td><td>${esc(pkg.event_type || '—')} · ${esc(fmtDate(pkg.event_date))}</td></tr>
+    </table>
+    <h3>Bill items</h3>
+    <table>
+      <tr><th>Item</th><th class="c">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr>
+      ${lines.map(row).join('') || '<tr><td colspan="4">No items</td></tr>'}
+      <tr class="tot"><td colspan="3" class="r">Combined Total</td><td class="r">${esc(inr(total))}</td></tr>
+      <tr class="tot"><td colspan="3" class="r" style="color:#059669">Paid</td><td class="r" style="color:#059669">${esc(inr(paid))}</td></tr>
+      <tr class="tot"><td colspan="3" class="r" style="color:${dueColor}">Balance Due</td><td class="r" style="color:${dueColor}">${esc(inr(due))}</td></tr>
+    </table>
+    <h3>Payments</h3>
+    <table><tr><th>Date</th><th>Method</th><th class="r">Amount</th></tr>${pays || '<tr><td colspan="3">No payments recorded</td></tr>'}</table>
+    <div class="foot">Thank you for choosing ${esc(propName)}.<br>${esc(address)} · Phone: ${esc(phone)}</div>
+  </body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 300);
 }

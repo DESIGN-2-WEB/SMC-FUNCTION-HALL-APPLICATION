@@ -37,7 +37,7 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="gold" icon={Sparkles} onClick={() => nav('/halls?package=1')}>Bulk Event Package</Button>
+            <Button variant="gold" icon={Sparkles} onClick={() => nav('/combos?new=1')}>Combo booking</Button>
             <Button icon={Plus} className="bg-white/10 hover:bg-white/15" onClick={() => nav('/halls?new=1')}>Hall booking</Button>
             <Button icon={Plus} className="bg-white/10 hover:bg-white/15" onClick={() => nav('/rooms?new=1')}>Room booking</Button>
           </div>

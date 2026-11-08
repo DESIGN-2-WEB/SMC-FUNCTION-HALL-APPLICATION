@@ -5,6 +5,7 @@ import { PageLoader, UIProvider } from './components/ui.jsx';
 import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import Combos from './pages/Combos.jsx';
 import Rooms from './pages/Rooms.jsx';
 import Halls from './pages/Halls.jsx';
 import Supplies from './pages/Supplies.jsx';
@@ -35,6 +36,7 @@ function Shell() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
+        <Route path="combos" element={<Combos />} />
         <Route path="rooms" element={<Rooms />} />
         <Route path="halls" element={<Halls />} />
         <Route path="supplies" element={<Supplies />} />

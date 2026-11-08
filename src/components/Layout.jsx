@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
-  BedDouble, ChevronLeft, ChevronRight, History, KeyRound, LayoutDashboard, LogOut, Menu, Package, PartyPopper, SlidersHorizontal, UserRound, Users, Wallet, X,
+  BedDouble, ChevronLeft, ChevronRight, History, KeyRound, LayoutDashboard, Layers, LogOut, Menu, Package, PartyPopper, SlidersHorizontal, UserRound, Users, Wallet, X,
 } from 'lucide-react';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
@@ -12,6 +12,7 @@ import AccountModal from './AccountModal.jsx';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/combos', label: 'Combo', icon: Layers },
   { to: '/rooms', label: 'Rooms', icon: BedDouble },
   { to: '/halls', label: 'Banquet Halls', icon: PartyPopper },
   { to: '/supplies', label: 'Supplies', icon: Package },
