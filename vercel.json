@@ -7,6 +7,9 @@
   "functions": {
     "api/index.js": { "includeFiles": "server/**" }
   },
+  "crons": [
+    { "path": "/api/settings/keepalive", "schedule": "40 9 * * *" }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }

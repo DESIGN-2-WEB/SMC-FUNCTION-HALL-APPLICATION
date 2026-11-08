@@ -1,30 +1,43 @@
 name: Supabase Keep-Alive Ping
 
+# Supabase pauses free projects after 7 days without activity. This reads from the
+# database twice a day so that never happens. (A Vercel cron job in vercel.json does
+# the same once a day as a backup, in case GitHub ever disables this schedule.)
+#
+# Needs repository secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_URL       e.g. https://<project-ref>.supabase.co
+#   SUPABASE_ANON_KEY  the project's publishable/anon key
+# Never put the key in this file: the repository is public.
+
 on:
   schedule:
-    # Runs daily at 00:00 UTC (resets the 7-day inactivity timer every 24 hours)
-    - cron: '0 0 * * *'
-  workflow_dispatch: # Allows manual one-click trigger from GitHub Actions tab
+    - cron: '17 3,15 * * *' # 03:17 and 15:17 UTC
+  workflow_dispatch: # manual run from the Actions tab
 
 jobs:
   keepalive:
-    name: Prevent Inactivity Pause
+    name: Prevent inactivity pause
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase Auth & API
+      - name: Read from the Supabase database
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          URL="${SUPABASE_URL:-https://nvfawinosokzlppvhcgj.supabase.co}"
-          KEY="${SUPABASE_ANON_KEY:-sb_publishable_YzhpDoNLnUoFI9gvaALkSA_2jYE1ROU}"
-          echo "Sending keep-alive ping to $URL..."
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$URL/auth/v1/health" \
-            -H "apikey: $KEY" \
-            -H "Authorization: Bearer $KEY")
-          echo "Supabase response code: $HTTP_STATUS"
-          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 204 ]; then
-            echo "Success: Supabase project is active and 7-day inactivity pause has been reset!"
-          else
-            echo "Ping registered with HTTP $HTTP_STATUS, resetting inactivity countdown."
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Add the SUPABASE_URL and SUPABASE_ANON_KEY repository secrets."
+            exit 1
           fi
+          URL="${SUPABASE_URL%/}"
+          for attempt in 1 2 3; do
+            DB=$(curl -s -o /dev/null -w "%{http_code}" "$URL/rest/v1/settings?select=key&limit=1" \
+              -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+            echo "Attempt $attempt: database responded HTTP $DB"
+            if [ "$DB" -ge 200 ] && [ "$DB" -lt 300 ]; then
+              echo "Supabase is active; inactivity timer reset."
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::Supabase did not respond. Check that the project is not paused."
+          exit 1

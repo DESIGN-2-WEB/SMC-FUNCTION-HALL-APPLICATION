@@ -30,18 +30,16 @@ export async function pingSupabase() {
 
   try {
     const base = url.replace(/\/$/, '');
-    // Ping Auth service health endpoint (works with publishable, anon, or service role keys)
-    const endpoint = `${base}/auth/v1/health`;
-    const res = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-      },
-    });
+    const headers = { apikey: key, Authorization: `Bearer ${key}` };
+    // A real database read is what counts as activity; the auth health check is a second signal
+    const [db, auth] = await Promise.all([
+      fetch(`${base}/rest/v1/settings?select=key&limit=1`, { headers }),
+      fetch(`${base}/auth/v1/health`, { headers }),
+    ]);
+    const ok = db.ok && auth.ok;
 
-    console.log(`[Supabase Keep-Alive] Pinged Supabase at ${new Date().toISOString()} (HTTP ${res.status}). Inactivity timer reset!`);
-    return { ok: true, status: res.status, service: 'auth-health', timestamp: new Date().toISOString() };
+    console.log(`[Supabase Keep-Alive] ${new Date().toISOString()} database HTTP ${db.status}, auth HTTP ${auth.status}${ok ? '' : ' (FAILED)'}`);
+    return { ok, database: db.status, auth: auth.status, timestamp: new Date().toISOString() };
   } catch (err) {
     console.error('[Supabase Keep-Alive] Ping failed:', err.message);
     return { ok: false, error: err.message };

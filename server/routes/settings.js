@@ -22,8 +22,8 @@ r.get('/', (req, res) => {
 
 r.get('/keepalive', async (req, res) => {
   const result = await pingSupabase();
-  res.json({
-    status: 'ok',
+  res.status(result.ok ? 200 : 502).json({
+    status: result.ok ? 'ok' : 'failed',
     keepalive: result,
     timestamp: new Date().toISOString(),
   });
