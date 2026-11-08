@@ -275,46 +275,22 @@ export function migrate() {
     db.exec("ALTER TABLE supply_rentals ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'Cash'");
   }
 
-  // Initialize total_quantity and rent_rate for existing supply rows
-  try {
+  // One-time backfill, only when the rental columns were just added to an old database
+  if (!sCols.has('total_quantity')) {
     db.exec("UPDATE supplies SET total_quantity = quantity WHERE total_quantity = 0 AND quantity > 0");
     db.exec("UPDATE supplies SET rent_rate = unit_cost WHERE rent_rate = 0 AND unit_cost > 0");
-    // Clean out old supplies if no active rentals exist
-    const hasActiveRentals = db.prepare("SELECT 1 FROM supply_rentals WHERE status = 'rented' LIMIT 1").get();
-    if (!hasActiveRentals) {
-      db.exec("DELETE FROM supplies WHERE NOT EXISTS (SELECT 1 FROM supply_rentals WHERE supply_id = supplies.id)");
-    }
-
-    const insSupply = db.prepare('INSERT OR IGNORE INTO supplies (name, category, unit, quantity, total_quantity, rented_quantity, min_quantity, rent_rate, unit_cost) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)');
-    for (const [name, cat, unit, qty, min, rate] of CATERING_ITEMS) {
-      insSupply.run(name, cat, unit, qty, qty, min, rate, rate);
-    }
-  } catch (err) {
-    console.error('Error updating rental supplies:', err.message);
   }
+}
 
-  // Ensure any existing combo hall is marked and populated with member hall ids
-  try {
-    db.exec("UPDATE halls SET is_combo = 1 WHERE name LIKE '%combo%'");
-    const bigHall = db.prepare("SELECT id FROM halls WHERE name LIKE '%Big%'").get();
-    const smallHall = db.prepare("SELECT id FROM halls WHERE name LIKE '%Small%'").get();
-    if (bigHall && smallHall) {
-      const pair = JSON.stringify([bigHall.id, smallHall.id]);
-      db.prepare("UPDATE halls SET included_hall_ids = ? WHERE is_combo = 1 AND (included_hall_ids = '' OR included_hall_ids IS NULL)").run(pair);
-    }
-  } catch (err) {
-    console.error('Error linking combo halls:', err.message);
-  }
-
+/**
+ * Adds settings rows that don't exist yet. Never overwrites a value someone saved.
+ * (Supplies, halls and rates are only created on first run by seed(), so edits and
+ * deletions made in the app stay as they are across restarts.)
+ */
+export function applyDefaults() {
   const insertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
     insertSetting.run(k, String(v));
-  }
-
-  // Ensure generators setting exists
-  const existingGen = db.prepare("SELECT value FROM settings WHERE key = 'generators'").get();
-  if (!existingGen) {
-    insertSetting.run('generators', DEFAULT_SETTINGS.generators);
   }
 }
 
@@ -438,8 +414,11 @@ export function seed() {
         username, name, bcrypt.hashSync(password, 10), role);
     for (const room of ROOMS)
       run('INSERT INTO rooms (number, name, type, rate, capacity, amenities) VALUES (?, ?, ?, ?, ?, ?)', ...room);
-    for (const hall of HALLS)
-      run('INSERT INTO halls (name, capacity, rate_full, rate_half, description) VALUES (?, ?, ?, ?, ?)', ...hall);
+    const hallIds = HALLS.map(hall =>
+      run('INSERT INTO halls (name, capacity, rate_full, rate_half, description) VALUES (?, ?, ?, ?, ?)', ...hall).id);
+    // "Both Halls Combo" books the big and small halls together
+    run('UPDATE halls SET is_combo = 1, included_hall_ids = ? WHERE id = ?',
+      JSON.stringify([hallIds[0], hallIds[1]]), hallIds[2]);
     for (const [name, category, unit, qty, min, rate] of SUPPLIES) {
       const existing = get('SELECT id FROM supplies WHERE name = ?', name);
       let supplyId = existing?.id;

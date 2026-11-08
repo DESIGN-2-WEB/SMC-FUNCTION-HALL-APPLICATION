@@ -13,10 +13,13 @@ export function requireAuth(req, res, next) {
     req.user = publicUser(user);
     req.sessionId = payload.sid || null;
 
-    // Refresh last active timestamp for current session
+    // Refresh last active timestamp for current session (at most once a minute, so
+    // simply viewing pages doesn't cause a database write on every request)
     if (req.sessionId) {
       try {
-        run("UPDATE user_sessions SET last_active_at = datetime('now', 'localtime') WHERE id = ? AND status = 'active'", req.sessionId);
+        run(`UPDATE user_sessions SET last_active_at = datetime('now', 'localtime')
+             WHERE id = ? AND status = 'active' AND last_active_at < datetime('now', 'localtime', '-60 seconds')`,
+          req.sessionId);
       } catch {
         // non-blocking
       }

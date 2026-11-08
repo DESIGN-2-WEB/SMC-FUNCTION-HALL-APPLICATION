@@ -11,7 +11,7 @@ export function getDBSettings() {
   const rows = all('SELECT key, value FROM settings');
   const s = { ...DEFAULT_SETTINGS };
   for (const row of rows) {
-    s[row.key] = row.value;
+    if (!row.key.startsWith('_')) s[row.key] = row.value; // `_` keys are internal (sync marker)
   }
   return s;
 }

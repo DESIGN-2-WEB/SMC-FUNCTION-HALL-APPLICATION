@@ -25,7 +25,7 @@ $$\text{Final bill} = \text{Hall rent} + \text{Power bill} + \text{Generator bil
 
 ---
 
-**Stack:** React 19 + Vite + Tailwind CSS 4 (frontend) · Node.js + Express 5 (API) · SQLite via Node's built-in `node:sqlite` (no database server to install) · JWT logins with bcrypt-hashed passwords.
+**Stack:** React 19 + Vite + Tailwind CSS 4 (frontend) · Node.js + Express 5 (API) · Supabase (PostgreSQL) as the permanent database, with a local SQLite working copy via Node's built-in `node:sqlite` · JWT logins with bcrypt-hashed passwords.
 
 ## Run it
 
@@ -45,8 +45,9 @@ For development with live reload: `npm run dev` → http://localhost:5173
 Import this repo at [vercel.com/new](https://vercel.com/new). No settings needed — `vercel.json` configures everything.
 
 On Vercel the app runs in demo mode: the login page shows `admin` / `admin123` with a **Fill in** button.
-The data lives in Vercel's temporary storage and resets whenever Vercel starts a fresh instance,
-so don't keep real hotel data there. For permanent online use, move the database to a hosted one (e.g. Turso).
+**Data is saved in Supabase**, so it survives Vercel restarts and redeploys. In **Project → Settings →
+Environment Variables** set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`).
+Without them the app falls back to Vercel's temporary storage and **data is lost** when Vercel starts a fresh instance.
 
 To turn the demo off, set `DEMO_MODE=false` **and** `JWT_SECRET` (any long random text) in
 **Project → Settings → Environment Variables**. Without `JWT_SECRET` the app refuses to start outside demo mode.
@@ -91,6 +92,7 @@ server/
   app.js              Express app: API, static files, error handler
   index.js            local server (listens on PORT, default 4000)
   db.js               SQLite connection + query helpers
+  sync.js             keeps the SQLite working copy in step with Supabase
   schema.js           tables + first-run seed data
   lib/http.js         input validation & error helpers
   middleware/auth.js  JWT sign-in check, admin-only guard
@@ -104,5 +106,8 @@ src/
 
 ## Data & backup
 
-All data lives in `data/hotel.db`. To back up, copy the `data` folder while the server is stopped.
+All data is saved in Supabase (tables from `supabase-schema.sql`). The server loads every table from Supabase
+when it starts, keeps a working copy in `data/hotel.db`, and pushes each change to Supabase before the screen
+shows it as saved. If Supabase can't be reached, the app shows an error instead of pretending to save.
+Back up from the Supabase dashboard (Database → Backups). Set `SUPABASE_SYNC=off` to run purely on the local file.
 Rates for rooms and halls were seeded with sample values — the admin can edit them from the Rooms and Banquet Halls pages.

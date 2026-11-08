@@ -5,6 +5,7 @@ import {
   FoldVertical,
   KeyRound,
   Landmark,
+  ListChecks,
   Lock,
   Plus,
   Save,
@@ -37,6 +38,90 @@ function parseGenerators(raw, fallback120, fallback30) {
     { id: 'gen_1', name: '120 kVA', rate: Number(fallback120) || 1500 },
     { id: 'gen_2', name: '30 kVA', rate: Number(fallback30) || 450 },
   ];
+}
+
+const splitList = raw => String(raw || '').split(',').map(s => s.trim()).filter(Boolean);
+
+/** Editable comma-separated setting: rename in place, remove, add, reorder. */
+function ListEditor({ label, hint, value, onChange, placeholder }) {
+  const items = splitList(value);
+  const [draft, setDraft] = useState('');
+  const commit = next => onChange(next.map(s => s.replace(/,/g, ' ').trim()).filter(Boolean).join(', '));
+  const add = () => {
+    const name = draft.trim();
+    if (!name) return;
+    if (!items.some(i => i.toLowerCase() === name.toLowerCase())) commit([...items, name]);
+    setDraft('');
+  };
+  const move = (i, dir) => {
+    const next = [...items];
+    const j = i + dir;
+    if (j < 0 || j >= next.length) return;
+    [next[i], next[j]] = [next[j], next[i]];
+    commit(next);
+  };
+
+  return (
+    <div className="space-y-2.5">
+      <div>
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-700">{label}</h4>
+        {hint && <p className="text-[11px] text-stone-500">{hint}</p>}
+      </div>
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-stone-300 p-3 text-center text-xs text-stone-500">
+          Nothing added yet.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item, i) => (
+            <div key={`${i}-${item}`} className="flex items-center gap-2">
+              <Input
+                defaultValue={item}
+                aria-label={`${label} ${i + 1}`}
+                onBlur={e => {
+                  const v = e.target.value.trim();
+                  if (v === item) return;
+                  const next = [...items];
+                  if (v) next[i] = v;
+                  else next.splice(i, 1);
+                  commit(next);
+                }}
+                className="bg-white flex-1 min-w-0"
+              />
+              <Button type="button" variant="ghost" size="sm" onClick={() => move(i, -1)} disabled={i === 0} title="Move up" className="px-2">↑</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => move(i, 1)} disabled={i === items.length - 1} title="Move down" className="px-2">↓</Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                icon={Trash2}
+                onClick={() => commit(items.filter((_, k) => k !== i))}
+                className="text-red-500 hover:bg-red-50 hover:text-red-700 p-2"
+                title="Remove"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Input
+          className="flex-1 min-w-0"
+          value={draft}
+          placeholder={placeholder}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              add();
+            }
+          }}
+        />
+        <Button type="button" variant="outline" size="sm" icon={Plus} onClick={add} className="shrink-0">
+          Add
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function CollapsibleCard({ id, icon: Icon, title, subtitle, badge, isOpen, onToggle, children }) {
@@ -104,6 +189,7 @@ export default function Settings() {
   const [openSections, setOpenSections] = useState({
     profile: false,
     tariffs: false,
+    events: false,
     whatsapp: false,
     account: !isAdmin,
   });
@@ -553,6 +639,34 @@ export default function Settings() {
               <p className="font-semibold text-ink-900">Billing Formula:</p>
               <p className="mt-0.5">Final bill = Hall rent + (Units × ₹{f.power_rate || 15}) + (Generator hrs × Rate/hr)</p>
             </div>
+          </div>
+        </CollapsibleCard>
+
+        {/* Event Types & Supply Categories */}
+        <CollapsibleCard
+          id="events"
+          icon={ListChecks}
+          title="Event Types & Supply Categories"
+          subtitle="Options shown in hall booking and supplies forms"
+          badge={`${splitList(f.event_types).length} event types · ${splitList(f.supply_categories).length} categories`}
+          isOpen={openSections.events}
+          onToggle={toggleSection}
+        >
+          <div className="grid gap-6 xl:grid-cols-2">
+            <ListEditor
+              label="Event Types"
+              hint="Used in hall bookings and packages"
+              value={f.event_types}
+              onChange={v => set('event_types', v)}
+              placeholder="e.g. Upanayanam"
+            />
+            <ListEditor
+              label="Supply Categories"
+              hint="Used to group items on the Supplies page"
+              value={f.supply_categories}
+              onChange={v => set('supply_categories', v)}
+              placeholder="e.g. Decoration"
+            />
           </div>
         </CollapsibleCard>
 
