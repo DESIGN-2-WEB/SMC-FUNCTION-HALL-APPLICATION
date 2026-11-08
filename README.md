@@ -107,7 +107,7 @@ src/
 ## Data & backup
 
 All data is saved in Supabase (tables from `supabase-schema.sql`). The server loads every table from Supabase
-when it starts, keeps a working copy in `data/hotel.db`, and pushes each change to Supabase before the screen
+when it starts, keeps a working copy in memory only (no data file on disk), and pushes each change to Supabase before the screen
 shows it as saved. If Supabase can't be reached, the app shows an error instead of pretending to save.
 Back up from the Supabase dashboard (Database → Backups). Set `SUPABASE_SYNC=off` to run purely on the local file.
 Rates for rooms and halls were seeded with sample values — the admin can edit them from the Rooms and Banquet Halls pages.

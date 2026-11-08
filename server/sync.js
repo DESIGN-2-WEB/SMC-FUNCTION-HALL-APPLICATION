@@ -8,9 +8,9 @@
 // A version marker (settings key `_data_version`) changes on every push, so other server
 // instances (Vercel runs several) notice and reload before serving stale data.
 import { db, tx } from './db.js';
-import { supabase } from './supabase.js';
+import { SYNC_ON, supabase } from './supabase.js';
 
-export const SYNC_ON = !!supabase && process.env.SUPABASE_SYNC !== 'off';
+export { SYNC_ON };
 
 // Parents before children, so inserts satisfy foreign keys (deletes run in reverse)
 const TABLES = [

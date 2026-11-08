@@ -1,3 +1,4 @@
+import './config.js'; // loads .env before the Supabase settings are read
 import { createClient } from '@supabase/supabase-js';
 
 const getUrl = () => process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -12,6 +13,9 @@ export const supabase = (getUrl() && getKey())
       auth: { persistSession: false },
     })
   : null;
+
+/** Supabase is the database whenever it is configured (SUPABASE_SYNC=off forces the local file). */
+export const SYNC_ON = !!supabase && process.env.SUPABASE_SYNC !== 'off';
 
 /**
  * Pings Supabase to prevent the Free Tier from automatically pausing after 7 days of inactivity.
