@@ -2,11 +2,22 @@ import './config.js'; // loads .env before the Supabase settings are read
 import { createClient } from '@supabase/supabase-js';
 
 const getUrl = () => process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+// The server should use the SECRET key (sb_secret_... or the legacy service_role key). It bypasses
+// row-level security, so the tables can be locked against the public/publishable key.
+// It is only ever read on the server; never give it a VITE_ or NEXT_PUBLIC_ name.
+const SECRET_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 const getKey = () =>
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  SECRET_KEY ||
   process.env.SUPABASE_ANON_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   process.env.SUPABASE_PUBLISHABLE_KEY;
+
+/** True when the server is using the secret key (required once row-level security is on). */
+export const USING_SECRET_KEY = !!SECRET_KEY;
+if (getUrl() && getKey() && !USING_SECRET_KEY) {
+  console.warn('[Supabase] Using the public key. Set SUPABASE_SECRET_KEY before turning on row-level security.');
+}
 
 export const supabase = (getUrl() && getKey())
   ? createClient(getUrl(), getKey(), {

@@ -8,7 +8,7 @@
 // A version marker (settings key `_data_version`) changes on every push, so other server
 // instances (Vercel runs several) notice and reload before serving stale data.
 import { db, tx } from './db.js';
-import { SYNC_ON, supabase } from './supabase.js';
+import { SYNC_ON, USING_SECRET_KEY, supabase } from './supabase.js';
 
 export { SYNC_ON };
 
@@ -150,6 +150,10 @@ async function pullInner() {
   }
   const version = await remoteVersion(); // read first: a write landing mid-load just triggers another reload
   const data = await Promise.all(TABLES.map(([t, pk]) => fetchAll(t, pk)));
+  // No logins at all means the key can't see the rows (row-level security on, but the server
+  // is not using the secret key). Stop rather than treat the database as empty.
+  if (!data[0].length && !USING_SECRET_KEY)
+    throw new Error('Supabase returned no users. Set SUPABASE_SECRET_KEY (row-level security blocks the public key).');
   db.exec('PRAGMA foreign_keys = OFF');
   try {
     tx(() => {

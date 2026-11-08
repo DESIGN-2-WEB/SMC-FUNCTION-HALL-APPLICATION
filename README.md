@@ -46,7 +46,7 @@ Import this repo at [vercel.com/new](https://vercel.com/new). No settings needed
 
 On Vercel the app runs in demo mode: the login page shows `admin` / `admin123` with a **Fill in** button.
 **Data is saved in Supabase**, so it survives Vercel restarts and redeploys. In **Project → Settings →
-Environment Variables** set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`).
+Environment Variables** set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (the secret key; follow the steps at the top of `supabase-security.sql` to lock the tables).
 Without them the app falls back to Vercel's temporary storage and **data is lost** when Vercel starts a fresh instance.
 
 To turn the demo off, set `DEMO_MODE=false` **and** `JWT_SECRET` (any long random text) in
