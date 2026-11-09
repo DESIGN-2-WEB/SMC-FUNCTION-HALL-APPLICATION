@@ -21,10 +21,11 @@ function AdvanceFields({ f, set }) {
   );
 }
 
-function RoomPaymentFields({ f, set }) {
+function RoomPaymentFields({ f, set, checkIn }) {
   const total = Number(f.total) || 0;
   const adv = Number(f.advance) || 0;
   const bal = Math.max(0, total - adv);
+  const dueAt = checkIn ? 'check-out' : 'check-in';
 
   return (
     <div className="rounded-2xl border border-gold-300 bg-gold-50/60 p-4 sm:col-span-2 space-y-3.5">
@@ -32,12 +33,12 @@ function RoomPaymentFields({ f, set }) {
         <div>
           <h4 className="font-semibold text-ink-900 text-sm flex items-center gap-1.5">
             <CheckCircle2 size={16} className="text-gold-600" />
-            Reservation Advance Payment
+            {checkIn ? 'Payment Received at Check-in' : 'Reservation Advance Payment'}
           </h4>
           <p className="text-xs text-stone-500">
             {adv > 0
-              ? (adv >= total ? 'Full fee collected for reservation' : `${inr(adv)} advance paid · Balance ${inr(bal)} due at check-in`)
-              : 'Advance deposit to secure and confirm the room reservation'}
+              ? (adv >= total ? 'Full amount collected' : `${inr(adv)} paid now · Balance ${inr(bal)} due at ${dueAt}`)
+              : checkIn ? 'Enter the money the guest pays now. Anything left shows as due.' : 'Advance deposit to secure and confirm the room reservation'}
           </p>
         </div>
         <span className="rounded-full bg-gold-100 px-3 py-1 text-xs font-bold text-gold-800">
@@ -48,8 +49,8 @@ function RoomPaymentFields({ f, set }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <Field
-            label="Advance received (₹)"
-            hint={adv > 0 ? (adv >= total ? '100% upfront fee' : `Balance due at check-in: ${inr(bal)}`) : `Advance deposit towards room fee of ${inr(total)}`}
+            label={checkIn ? 'Amount received now (₹)' : 'Advance received (₹)'}
+            hint={adv > 0 ? (adv >= total ? 'Fully paid' : `Balance due at ${dueAt}: ${inr(bal)}`) : `Towards the room bill of ${inr(total)}`}
           >
             <Input
               type="number"
@@ -71,7 +72,7 @@ function RoomPaymentFields({ f, set }) {
                 !adv ? 'bg-ink-900 text-white' : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-100'
               )}
             >
-              No advance (₹0)
+              Nothing yet (₹0)
             </button>
             {total > 1000 && (
               <button
@@ -93,7 +94,7 @@ function RoomPaymentFields({ f, set }) {
                 adv === total && total > 0 ? 'bg-ink-900 text-white' : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-100'
               )}
             >
-              Full fee ({inr(total)})
+              Full amount ({inr(total)})
             </button>
           </div>
         </div>
@@ -142,6 +143,7 @@ export function RoomBookingForm({ booking, rooms, defaultRoomId, defaultDate, on
     if (!f.check_in || !f.check_out) return toast('Please select check-in and check-out dates', 'error');
     if (!f.id_proof?.trim()) return toast('Please enter ID proof number (Aadhaar / DL / Passport)', 'error');
     if (!f.id_photo_taken) return toast('Please confirm taking the photo of the ID proof on mobile phone', 'error');
+    if (!editing && (Number(f.advance) || 0) > (Number(f.total) || 0)) return toast('Amount received is more than the room bill', 'error');
 
     save({
       ...f,
@@ -149,7 +151,7 @@ export function RoomBookingForm({ booking, rooms, defaultRoomId, defaultDate, on
       room_id: Number(f.room_id),
       discount: Number(f.discount) || 0,
       id_photo_taken: f.id_photo_taken ? 1 : 0,
-      ...(editing ? {} : { advance: isReservation ? (Number(f.advance) || 0) : 0 }),
+      ...(editing ? {} : { advance: Number(f.advance) || 0 }),
     });
   };
 
@@ -285,10 +287,10 @@ export function RoomBookingForm({ booking, rooms, defaultRoomId, defaultDate, on
         <Field label="Discount (₹)" hint={discAmount > 0 ? `Discount applied: −${inr(discAmount)}` : 'Flat discount on stay'}>
           <Input type="number" min="0" placeholder="0" value={f.discount} onChange={e => set('discount', e.target.value)} />
         </Field>
-        <Field label="Total amount (₹)" hint={autoTotal ? `${n} night${n === 1 ? '' : 's'} × ${inr(f.rate)}${discAmount > 0 ? ` − ${inr(discAmount)} discount` : ''}` : 'Custom amount'} className="sm:col-span-2">
+        <Field label="Room bill total (₹)" hint={autoTotal ? `Bill: ${n} night${n === 1 ? '' : 's'} × ${inr(f.rate)}${discAmount > 0 ? ` − ${inr(discAmount)} discount` : ''}` : 'Custom amount'} className="sm:col-span-2">
           <Input type="number" min="0" value={f.total} onChange={e => { setAutoTotal(false); set('total', e.target.value); }} />
         </Field>
-        {!editing && isReservation && <RoomPaymentFields f={f} set={set} />}
+        {!editing && <RoomPaymentFields f={f} set={set} checkIn={!isReservation} />}
         <Field label="Notes" className="sm:col-span-2"><Textarea value={f.notes} onChange={e => set('notes', e.target.value)} placeholder="Extra bed, early check-in, etc." /></Field>
       </Form>
     </Modal>
