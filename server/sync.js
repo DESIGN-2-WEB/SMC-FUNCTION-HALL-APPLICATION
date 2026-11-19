@@ -40,7 +40,8 @@ const DATE_COLS = new Set([
 export const VERSION_KEY = '_data_version';
 const PAGE = 1000;
 const CHUNK = 500;
-const READ_CHECK_MS = 3000;
+const READ_CHECK_MS = 3000; // re-check Supabase in the background this often
+const READ_BLOCK_MS = 60000; // after this long with no check, a page waits for one
 
 const columns = {};
 let localVersion = null;
@@ -218,7 +219,9 @@ async function flushInner() {
   };
 
   try {
-    const before = await remoteVersion();
+    // Read the version alongside the push (not before it) to save a round trip;
+    // if it can't be read, assume someone else wrote and reload afterwards
+    const beforeP = remoteVersion().catch(() => null);
     for (const [t, pk] of TABLES) {
       // New rows use a plain insert: if another server already used that id, this fails
       // loudly instead of overwriting someone else's booking.
@@ -234,6 +237,7 @@ async function flushInner() {
       for (let i = 0; i < keys.length; i += CHUNK)
         check(await supabase.from(t).delete().in(pk, keys.slice(i, i + CHUNK)), `Deleting from ${t}`);
     }
+    const before = await beforeP;
     const version = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     check(
       await supabase.from('settings').upsert({ key: VERSION_KEY, value: version }, { onConflict: 'key' }),
@@ -257,16 +261,34 @@ async function flushInner() {
 /** Loads everything from Supabase into the local copy. */
 export const pullAll = () => (SYNC_ON ? locked(pullInner) : Promise.resolve());
 
-/** Make sure the local copy matches Supabase before handling a request. */
+// One check at a time: requests that arrive together (a page loads several) share it
+let checking = null;
+function checkRemote() {
+  if (!checking) {
+    checking = locked(async () => {
+      if (stale) return pullInner();
+      const v = await remoteVersion();
+      lastCheck = Date.now();
+      if (v !== localVersion) await pullInner();
+    }).finally(() => {
+      checking = null;
+    });
+  }
+  return checking;
+}
+
+/**
+ * Keep the local copy in step with Supabase without making pages wait:
+ * - saves always check first (and wait), so they never build on old data;
+ * - page loads are answered straight away and checked in the background, unless
+ *   nothing was checked for a minute, then they wait for one check.
+ */
 export async function ensureFresh(isWrite) {
   if (!SYNC_ON) return;
-  if (!stale && !isWrite && Date.now() - lastCheck < READ_CHECK_MS) return;
-  await locked(async () => {
-    if (stale) return pullInner();
-    const v = await remoteVersion();
-    lastCheck = Date.now();
-    if (v !== localVersion) await pullInner();
-  });
+  const age = Date.now() - lastCheck;
+  if (isWrite || stale || age >= READ_BLOCK_MS) return checkRemote();
+  if (age >= READ_CHECK_MS)
+    checkRemote().catch(err => console.error('[sync] background check failed:', err.message));
 }
 
 /** Push pending changes. Throws if any change numbered in (startSeq, endSeq] failed to save. */
