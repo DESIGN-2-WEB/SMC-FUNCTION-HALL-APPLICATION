@@ -47,8 +47,13 @@ export default function Login() {
     <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
       {/* Showcase panel */}
       <div className="relative hidden overflow-hidden bg-ink-900 lg:flex lg:flex-col lg:justify-between lg:p-14">
-        <Mandala className="absolute -right-40 -bottom-40 h-[640px] w-[640px] text-gold-400/15" />
-        <Mandala className="absolute -top-32 -left-32 h-[380px] w-[380px] text-gold-400/10" />
+        {/* Slow turn in opposite directions; still for people who turn off motion in their device settings */}
+        <div className="pointer-events-none absolute -right-40 -bottom-40 h-[640px] w-[640px] motion-safe:animate-orbit">
+          <Mandala className="h-full w-full text-gold-400/15" />
+        </div>
+        <div className="pointer-events-none absolute -top-32 -left-32 h-[380px] w-[380px] motion-safe:animate-orbit-reverse">
+          <Mandala className="h-full w-full text-gold-400/10" />
+        </div>
         <div className="relative">
           <Brand />
           {settings.banner_name && (
