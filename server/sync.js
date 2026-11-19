@@ -1,18 +1,19 @@
-// Keeps the local SQLite working copy in step with the Supabase (PostgreSQL) database.
+// Keeps the local SQLite working copy in step with the permanent MySQL database.
 //
-// Supabase is the source of truth. The server loads every table from Supabase on start,
+// MySQL is the source of truth. The server loads every table from MySQL on start,
 // SQLite triggers record each row the app inserts, updates or deletes, and those rows are
-// pushed to Supabase before the API answers. If the push fails, the request fails and the
-// local copy is reloaded from Supabase, so nothing is ever shown as "saved" when it isn't.
+// written to MySQL in one transaction before the API answers. If that fails, the request
+// fails and the local copy is reloaded from MySQL, so nothing is ever shown as "saved"
+// when it isn't.
 //
-// A version marker (settings key `_data_version`) changes on every push, so other server
-// instances (Vercel runs several) notice and reload before serving stale data.
+// A version marker (settings key `_data_version`) changes on every save, so another server
+// process notices and reloads before serving old data.
 import { db, tx } from './db.js';
-import { SYNC_ON, USING_SECRET_KEY, supabase } from './supabase.js';
+import { SYNC_ON, ensureMysqlSchema, pool, q } from './mysql.js';
 
 export { SYNC_ON };
 
-// Parents before children, so inserts satisfy foreign keys (deletes run in reverse)
+// Parents before children (deletes run in reverse)
 const TABLES = [
   ['users', 'id'],
   ['rooms', 'id'],
@@ -30,25 +31,18 @@ const TABLES = [
 ];
 const PK = Object.fromEntries(TABLES);
 
-// Column types that differ between SQLite (all TEXT) and PostgreSQL
-const TIMESTAMP_COLS = new Set(['created_at', 'login_time', 'last_active_at', 'logout_time']);
-const DATE_COLS = new Set([
-  'event_date', 'check_in_date', 'check_out_date', 'check_in', 'check_out',
-  'paid_on', 'rent_date', 'expected_return_date', 'return_date',
-]);
-
 export const VERSION_KEY = '_data_version';
-const PAGE = 1000;
 const CHUNK = 500;
-const READ_CHECK_MS = 3000; // re-check Supabase when the last check is older than this
+const READ_CHECK_MS = 3000; // re-check MySQL when the last check is older than this
 
 const columns = {};
+let schemaReady = false;
 let localVersion = null;
 let lastCheck = 0;
 let stale = true;
 const failures = [];
 
-// One sync operation at a time (pushes and reloads must not interleave)
+// One sync operation at a time (saves and reloads must not interleave)
 let chain = Promise.resolve();
 const locked = fn => {
   const p = chain.then(fn, fn);
@@ -83,61 +77,37 @@ export function installSyncTriggers() {
   }
 }
 
+/** Column lists of the synced tables (used to create the MySQL tables and the import file). */
+export const syncedColumns = () => Object.fromEntries(TABLES.map(([t]) => [t, columns[t]]));
+
 export const lastSeq = () =>
   SYNC_ON ? db.prepare('SELECT COALESCE(MAX(seq), 0) AS s FROM _sync_log').get().s : 0;
 export const isStale = () => stale;
 
-const check = ({ data, error }, what) => {
-  if (error) throw new Error(`${what}: ${error.message}`);
-  return data;
-};
-
-const pad = n => String(n).padStart(2, '0');
-const sqliteTime = d =>
-  `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
-  `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
-
-/** Supabase value -> SQLite value */
+/** MySQL value -> SQLite value */
 function fromRemote(v, col) {
   if (v === null || v === undefined) {
     if (!col.notnull) return null;
     return /INT|REAL|NUM/i.test(col.type) ? 0 : '';
   }
-  if (typeof v === 'boolean') return v ? 1 : 0;
-  if (typeof v === 'object') return JSON.stringify(v);
-  if (TIMESTAMP_COLS.has(col.name) && typeof v === 'string' && v.includes('T')) {
-    const d = new Date(v);
-    if (!Number.isNaN(d.getTime())) return sqliteTime(d);
-  }
+  if (typeof v === 'bigint') return Number(v);
+  if (Buffer.isBuffer(v)) return v.toString('utf8');
+  if (v instanceof Date) return v.toISOString().slice(0, 19).replace('T', ' ');
   return v;
 }
 
-/** SQLite value -> Supabase value. Times are stored exactly as the app wrote them. */
-function toRemote(v, name) {
-  if (v === '' && (DATE_COLS.has(name) || TIMESTAMP_COLS.has(name))) return null;
-  if (TIMESTAMP_COLS.has(name) && typeof v === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(v))
-    return `${v.replace(' ', 'T')}Z`;
-  return v;
-}
-
-async function remoteVersion() {
-  const data = check(
-    await supabase.from('settings').select('value').eq('key', VERSION_KEY).maybeSingle(),
-    'Reading data version',
+const readVersion = async (conn, forUpdate = false) => {
+  const [rows] = await conn.query(
+    `SELECT value FROM settings WHERE ${q('key')} = ?${forUpdate ? ' FOR UPDATE' : ''}`,
+    [VERSION_KEY],
   );
-  return data?.value ?? null;
-}
+  return rows[0]?.value ?? null;
+};
 
-async function fetchAll(t, pk) {
-  const rows = [];
-  for (let from = 0; ; from += PAGE) {
-    const page = check(
-      await supabase.from(t).select('*').order(pk, { ascending: true }).range(from, from + PAGE - 1),
-      `Loading ${t}`,
-    );
-    rows.push(...page);
-    if (page.length < PAGE) return rows;
-  }
+async function ensureSchema() {
+  if (schemaReady) return;
+  await ensureMysqlSchema(syncedColumns());
+  schemaReady = true;
 }
 
 async function pullInner() {
@@ -148,12 +118,23 @@ async function pullInner() {
       // recorded in `failures`; the reload below restores the true state
     }
   }
-  const version = await remoteVersion(); // read first: a write landing mid-load just triggers another reload
-  const data = await Promise.all(TABLES.map(([t, pk]) => fetchAll(t, pk)));
-  // No logins at all means the key can't see the rows (row-level security on, but the server
-  // is not using the secret key). Stop rather than treat the database as empty.
-  if (!data[0].length && !USING_SECRET_KEY)
-    throw new Error('Supabase returned no users. Set SUPABASE_SECRET_KEY (row-level security blocks the public key).');
+  await ensureSchema();
+  const conn = await pool.getConnection();
+  let version;
+  const data = [];
+  try {
+    // One consistent snapshot: the version and every table as of the same moment
+    await conn.query('START TRANSACTION WITH CONSISTENT SNAPSHOT');
+    version = await readVersion(conn);
+    for (const [t, pk] of TABLES) {
+      const [rows] = await conn.query(`SELECT * FROM ${q(t)} ORDER BY ${q(pk)}`);
+      data.push(rows);
+    }
+    await conn.query('COMMIT');
+  } finally {
+    conn.release();
+  }
+
   db.exec('PRAGMA foreign_keys = OFF');
   try {
     tx(() => {
@@ -208,56 +189,65 @@ async function flushInner() {
     const out = [];
     for (let i = 0; i < keys.length; i += CHUNK) {
       const part = keys.slice(i, i + CHUNK);
-      const rows = db
-        .prepare(`SELECT * FROM ${t} WHERE ${pk} IN (${part.map(() => '?').join(', ')})`)
-        .all(...part);
-      for (const row of rows)
-        out.push(Object.fromEntries(Object.entries(row).map(([c, v]) => [c, toRemote(v, c)])));
+      out.push(...db.prepare(`SELECT * FROM ${t} WHERE ${pk} IN (${part.map(() => '?').join(', ')})`).all(...part));
     }
     return out;
   };
 
+  let conn;
   try {
-    // Read the version alongside the push (not before it) to save a round trip;
-    // if it can't be read, assume someone else wrote and reload afterwards
-    const beforeP = remoteVersion().catch(() => null);
+    await ensureSchema();
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    // Lock the version row: saves from other processes wait their turn
+    const before = await readVersion(conn, true);
     for (const [t, pk] of TABLES) {
-      // New rows use a plain insert: if another server already used that id, this fails
+      const names = columns[t].map(c => c.name);
+      const colList = names.map(q).join(', ');
+      const values = rows => rows.map(r => names.map(n => r[n]));
+      // New rows use a plain insert: if another process already used that id, this fails
       // loudly instead of overwriting someone else's booking.
       const ins = inserts[t] ? readRows(t, inserts[t]) : [];
       for (let i = 0; i < ins.length; i += CHUNK)
-        check(await supabase.from(t).insert(ins.slice(i, i + CHUNK)), `Saving ${t}`);
+        await conn.query(`INSERT INTO ${q(t)} (${colList}) VALUES ?`, [values(ins.slice(i, i + CHUNK))]);
       const ups = upserts[t] ? readRows(t, upserts[t]) : [];
+      const update = names.filter(n => n !== pk).map(n => `${q(n)} = VALUES(${q(n)})`).join(', ');
       for (let i = 0; i < ups.length; i += CHUNK)
-        check(await supabase.from(t).upsert(ups.slice(i, i + CHUNK), { onConflict: pk }), `Saving ${t}`);
+        await conn.query(
+          `INSERT INTO ${q(t)} (${colList}) VALUES ? ON DUPLICATE KEY UPDATE ${update}`,
+          [values(ups.slice(i, i + CHUNK))],
+        );
     }
     for (const [t, pk] of [...TABLES].reverse()) {
       const keys = deletes[t] || [];
       for (let i = 0; i < keys.length; i += CHUNK)
-        check(await supabase.from(t).delete().in(pk, keys.slice(i, i + CHUNK)), `Deleting from ${t}`);
+        await conn.query(`DELETE FROM ${q(t)} WHERE ${q(pk)} IN (?)`, [keys.slice(i, i + CHUNK)]);
     }
-    const before = await beforeP;
     const version = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    check(
-      await supabase.from('settings').upsert({ key: VERSION_KEY, value: version }, { onConflict: 'key' }),
-      'Updating data version',
+    await conn.query(
+      `INSERT INTO settings (${q('key')}, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      [VERSION_KEY, version],
     );
+    await conn.commit();
     db.prepare('DELETE FROM _sync_log WHERE seq <= ?').run(to);
-    // Someone else wrote between our last check and this push: reload to pick up their rows
+    // Someone else saved between our last check and this save: reload to pick up their rows
     stale = before !== localVersion;
     localVersion = version;
     lastCheck = Date.now();
   } catch (err) {
-    console.error('[sync] push to Supabase failed:', err.message);
+    if (conn) await conn.rollback().catch(() => {});
+    console.error('[sync] save to MySQL failed:', err.message);
     failures.push({ from, to, message: err.message });
     if (failures.length > 100) failures.shift();
     db.prepare('DELETE FROM _sync_log WHERE seq <= ?').run(to);
     stale = true;
     throw err;
+  } finally {
+    conn?.release();
   }
 }
 
-/** Loads everything from Supabase into the local copy. */
+/** Loads everything from MySQL into the local copy. */
 export const pullAll = () => (SYNC_ON ? locked(pullInner) : Promise.resolve());
 
 // One check at a time: requests that arrive together (a page loads several) share it
@@ -266,7 +256,7 @@ function checkRemote() {
   if (!checking) {
     checking = locked(async () => {
       if (stale) return pullInner();
-      const v = await remoteVersion();
+      const v = await readVersion(pool);
       lastCheck = Date.now();
       if (v !== localVersion) await pullInner();
     }).finally(() => {
@@ -277,19 +267,17 @@ function checkRemote() {
 }
 
 /**
- * Keep the local copy in step with Supabase before handling a request:
+ * Keep the local copy in step with MySQL before handling a request:
  * - saves always check first;
  * - other requests check when the last check is over 3 seconds old.
- * Every request waits for the check (so logins, roles and data are never older than
- * that), but requests arriving together share a single check, so a page that makes
- * several calls waits for one round trip, not one per call.
+ * Requests arriving together share a single check.
  */
 export async function ensureFresh(isWrite) {
   if (!SYNC_ON) return;
   if (isWrite || stale || Date.now() - lastCheck >= READ_CHECK_MS) return checkRemote();
 }
 
-/** Push pending changes. Throws if any change numbered in (startSeq, endSeq] failed to save. */
+/** Save pending changes. Throws if any change numbered in (startSeq, endSeq] failed to save. */
 export async function commit(startSeq, endSeq) {
   if (!SYNC_ON) return;
   await locked(async () => {
@@ -303,7 +291,7 @@ export async function commit(startSeq, endSeq) {
   if (f) throw new Error(f.message);
 }
 
-/** Express middleware: fresh data in, changes saved to Supabase before the response goes out. */
+/** Express middleware: fresh data in, changes saved to MySQL before the response goes out. */
 export function syncMiddleware(req, res, next) {
   if (!SYNC_ON) return next();
   ensureFresh(req.method !== 'GET')
@@ -324,7 +312,7 @@ export function syncMiddleware(req, res, next) {
       next();
     })
     .catch(err => {
-      console.error('[sync] could not load from Supabase:', err.message);
-      res.status(503).json({ error: 'Cannot reach the database right now. Check the internet connection and try again.' });
+      console.error('[sync] could not load from MySQL:', err.message);
+      res.status(503).json({ error: 'Cannot reach the database right now. Please try again in a moment.' });
     });
 }

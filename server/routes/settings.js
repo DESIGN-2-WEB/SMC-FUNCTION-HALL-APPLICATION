@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { all, log, run, tx } from '../db.js';
 import { DEFAULT_SETTINGS } from '../schema.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.js';
-import { pingSupabase } from '../supabase.js';
+import { SYNC_ON } from '../mysql.js';
 
 const r = Router();
 export default r;
@@ -20,13 +20,9 @@ r.get('/', (req, res) => {
   res.json(getDBSettings());
 });
 
-r.get('/keepalive', async (req, res) => {
-  const result = await pingSupabase();
-  res.status(result.ok ? 200 : 502).json({
-    status: result.ok ? 'ok' : 'failed',
-    keepalive: result,
-    timestamp: new Date().toISOString(),
-  });
+// Quick check after a deploy: reaching this means the database loaded (the sync step runs first)
+r.get('/health', (req, res) => {
+  res.json({ ok: true, database: SYNC_ON ? 'mysql' : 'local file', time: new Date().toISOString() });
 });
 
 r.put('/', requireAuth, requireAdmin, (req, res) => {

@@ -25,7 +25,7 @@ $$\text{Final bill} = \text{Hall rent} + \text{Power bill} + \text{Generator bil
 
 ---
 
-**Stack:** React 19 + Vite + Tailwind CSS 4 (frontend) · Node.js + Express 5 (API) · Supabase (PostgreSQL) as the permanent database, with a local SQLite working copy via Node's built-in `node:sqlite` · JWT logins with bcrypt-hashed passwords.
+**Stack:** React 19 + Vite + Tailwind CSS 4 (frontend) · Node.js + Express 5 (API) · MySQL as the permanent database (GoDaddy Node.js Hosting's managed MySQL), with a working copy in Node's built-in `node:sqlite` · JWT logins with bcrypt-hashed passwords.
 
 ## Run it
 
@@ -40,17 +40,21 @@ Open **http://localhost:4000**. Other computers/phones on the same Wi-Fi can ope
 
 For development with live reload: `npm run dev` → http://localhost:5173
 
-## Online demo (Vercel)
+## Hosting (GoDaddy Node.js Hosting)
 
-Import this repo at [vercel.com/new](https://vercel.com/new). No settings needed — `vercel.json` configures everything.
+The app runs on GoDaddy Node.js Hosting with its managed MySQL database, deployed from this GitHub repo.
 
-On Vercel the app runs in demo mode: the login page shows `admin` / `admin123` with a **Fill in** button.
-**Data is saved in Supabase**, so it survives Vercel restarts and redeploys. In **Project → Settings →
-Environment Variables** set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (the secret key; follow the steps at the top of `supabase-security.sql` to lock the tables).
-Without them the app falls back to Vercel's temporary storage and **data is lost** when Vercel starts a fresh instance.
+1. In the GoDaddy hosting dashboard: **Node.js Apps → Add App → Connect GitHub**, pick this repo and branch.
+2. In the app's **Settings → secrets** set the MySQL connection (see `.env.example` for the accepted names)
+   and `JWT_SECRET` (any long random text; keep it the same so logins survive redeploys).
+3. Check the private preview, then **Publish Now** and connect the domain (for example `hall.jsippalasa.com`).
 
-To turn the demo off, set `DEMO_MODE=false` **and** `JWT_SECRET` (any long random text) in
-**Project → Settings → Environment Variables**. Without `JWT_SECRET` the app refuses to start outside demo mode.
+The app creates its MySQL tables by itself on first start. GoDaddy redeploys on every push to the connected branch.
+GoDaddy's requirements this repo follows: everything needed to build is in `dependencies`, `npm run build` then
+`npm start`, and the server listens on `process.env.PORT`.
+
+A hosted copy with no MySQL configured (for example an old Vercel deployment) disables its API instead of saving
+to temporary storage.
 
 ## Default logins
 
@@ -92,7 +96,8 @@ server/
   app.js              Express app: API, static files, error handler
   index.js            local server (listens on PORT, default 4000)
   db.js               SQLite connection + query helpers
-  sync.js             keeps the SQLite working copy in step with Supabase
+  mysql.js            MySQL connection; creates the tables
+  sync.js             keeps the SQLite working copy in step with MySQL
   schema.js           tables + first-run seed data
   lib/http.js         input validation & error helpers
   middleware/auth.js  JWT sign-in check, admin-only guard
@@ -106,8 +111,9 @@ src/
 
 ## Data & backup
 
-All data is saved in Supabase (tables from `supabase-schema.sql`). The server loads every table from Supabase
-when it starts, keeps a working copy in memory only (no data file on disk), and pushes each change to Supabase before the screen
-shows it as saved. If Supabase can't be reached, the app shows an error instead of pretending to save.
-Back up from the Supabase dashboard (Database → Backups). Set `SUPABASE_SYNC=off` to run purely on the local file.
+All data is saved in MySQL. The server loads every table from MySQL when it starts, keeps a working copy
+in memory only (no data file on disk), and writes each change to MySQL in one transaction before the screen shows it as
+saved. If MySQL can't be reached, the app shows an error instead of pretending to save.
+Back up from the GoDaddy database tools (export). Without MySQL settings, the app runs on a local file
+(`data/hotel.db`), which is handy on your own computer.
 Rates for rooms and halls were seeded with sample values — the admin can edit them from the Rooms and Banquet Halls pages.

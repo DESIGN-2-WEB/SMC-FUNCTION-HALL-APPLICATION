@@ -4,16 +4,17 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes } from 'node:crypto';
 import { DEMO, ON_VERCEL } from './config.js';
-import { SYNC_ON } from './supabase.js';
+import { SYNC_ON } from './mysql.js';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Vercel functions can only write to /tmp, which is temporary — fine for the demo
 const dataDir = process.env.DATA_DIR || (ON_VERCEL ? '/tmp/penta-kedarnath' : join(ROOT, 'data'));
 mkdirSync(dataDir, { recursive: true });
 
-// With Supabase configured, all data comes from Supabase: the working copy lives only in
-// memory and is reloaded from Supabase on every start, so no old data is ever kept on disk.
-export const db = new DatabaseSync(SYNC_ON ? ':memory:' : join(dataDir, 'hotel.db'));
+// With MySQL configured, all data comes from MySQL: the working copy lives only in
+// memory and is reloaded from MySQL on every start, so no old data is ever kept on disk.
+// (SQLITE_MEMORY=1 also forces memory, for tools that only need the table layout.)
+export const db = new DatabaseSync(SYNC_ON || process.env.SQLITE_MEMORY === '1' ? ':memory:' : join(dataDir, 'hotel.db'));
 db.exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
 
 export const secret = loadSecret();

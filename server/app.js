@@ -13,9 +13,9 @@ try {
   if (SYNC_ON) {
     try {
       await pullAll();
-      console.log('[sync] Loaded data from Supabase');
+      console.log('[sync] Loaded data from MySQL');
     } catch (err) {
-      console.error('[sync] Could not load from Supabase yet, will retry on the next request:', err.message);
+      console.error('[sync] Could not load from MySQL yet, will retry on the next request:', err.message);
     }
   }
   // Defaults and first-run data only once we know what the real database holds
@@ -32,6 +32,16 @@ const app = express();
 // Behind Vercel's proxy every request comes through it; locally only loopback proxies are trusted
 app.set('trust proxy', ON_VERCEL ? true : 'loopback');
 app.use(express.json({ limit: '1mb' }));
+
+// A hosted copy without a database would keep data only until it restarts. Refuse to run
+// rather than lose bookings (e.g. an old Vercel deployment left online after the move).
+const NO_DATABASE = !SYNC_ON && (ON_VERCEL || process.env.NODE_ENV === 'production');
+if (NO_DATABASE) console.error('[mysql] No MySQL database configured: the API is disabled on this server.');
+app.use('/api', (req, res, next) =>
+  NO_DATABASE
+    ? res.status(503).json({ error: 'This copy of the app is not connected to a database. Please use the main website.' })
+    : next());
+
 app.use('/api', syncMiddleware, api);
 
 // Locally the built React app is served from /dist (on Vercel, its CDN serves it)
