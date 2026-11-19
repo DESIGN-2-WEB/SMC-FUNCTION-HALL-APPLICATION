@@ -760,7 +760,8 @@ export default function Settings() {
               )}
 
               {f.whatsapp_provider === 'webhook' && (
-                <Field label="Custom Webhook / API URL" className="sm:col-span-2">
+                <Field label="Custom Webhook / API URL" className="sm:col-span-2"
+                  hint={f.whatsapp_webhook_url === '••••••••' ? 'Saved and hidden for safety. Type a new address to replace it.' : undefined}>
                   <Input
                     value={f.whatsapp_webhook_url || ''}
                     onChange={e => set('whatsapp_webhook_url', e.target.value)}

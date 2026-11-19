@@ -2,14 +2,17 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { DEMO } from '../config.js';
 import { all, get, log, run } from '../db.js';
-import { publicUser, requireAuth, signToken } from '../middleware/auth.js';
+import { endSessions, publicUser, requireAuth, signToken } from '../middleware/auth.js';
 
 const r = Router();
 export default r;
 
-// Brute-force guard: 10 failed attempts per IP per 15 minutes
+// Brute-force guard, per 15 minutes: 10 wrong passwords for one login name, or 30 from one
+// address (higher, because a whole office can share one address behind a proxy)
 const failures = new Map();
 const WINDOW = 15 * 60 * 1000;
+const USER_LIMIT = 10;
+const IP_LIMIT = 30;
 
 r.get('/demo', (req, res) => res.json({ demo: DEMO }));
 
@@ -39,20 +42,26 @@ export function parseDevice(ua = '') {
 }
 
 r.post('/login', (req, res) => {
-  const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || '';
-  const ip = String(rawIp).replace('::ffff:', '').trim();
-  const f = failures.get(ip);
-  if (f && f.count >= 10 && Date.now() - f.first < WINDOW)
+  // req.ip follows the server's "trust proxy" setting, so a client can't fake it with a header
+  const ip = String(req.ip || req.socket?.remoteAddress || '').replace('::ffff:', '').trim();
+  const { username = '', password = '' } = req.body || {};
+  const name = String(username).trim().toLowerCase();
+  // Two limits: per address, and per login name (which no proxy or header can get around)
+  const keys = [[`ip:${ip}`, IP_LIMIT], [`user:${name}`, USER_LIMIT]];
+  const now = Date.now();
+  if (keys.some(([k, limit]) => { const f = failures.get(k); return f && f.count >= limit && now - f.first < WINDOW; }))
     return res.status(429).json({ error: 'Too many attempts. Try again in a few minutes.' });
 
-  const { username = '', password = '' } = req.body || {};
   const user = get('SELECT * FROM users WHERE username = ? AND active = 1', String(username).trim());
   if (!user || !bcrypt.compareSync(String(password), user.password_hash)) {
-    const cur = f && Date.now() - f.first < WINDOW ? f : { count: 0, first: Date.now() };
-    failures.set(ip, { ...cur, count: cur.count + 1 });
+    for (const [k] of keys) {
+      const f = failures.get(k);
+      const cur = f && now - f.first < WINDOW ? f : { count: 0, first: now };
+      failures.set(k, { ...cur, count: cur.count + 1 });
+    }
     return res.status(401).json({ error: 'Wrong password' });
   }
-  failures.delete(ip);
+  for (const [k] of keys) failures.delete(k);
 
   const ua = req.headers['user-agent'] || '';
   const deviceInfo = parseDevice(ua);
@@ -87,6 +96,9 @@ r.post('/logout', requireAuth, (req, res) => {
           duration_seconds = MAX(0, CAST((strftime('%s', 'now', 'localtime') - strftime('%s', login_time)) AS INTEGER))
       WHERE id = ? AND status = 'active'
     `, sid);
+    // Already auto-closed as timed_out (e.g. signed in again on another device): it must
+    // still end now, or this device's sign-in would keep working
+    run("UPDATE user_sessions SET status = 'logged_out' WHERE id = ? AND status = 'timed_out'", sid);
   } else {
     run(`
       UPDATE user_sessions
@@ -135,6 +147,7 @@ r.post('/password', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'Current password is incorrect' });
   if (String(next).length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
   run('UPDATE users SET password_hash = ? WHERE id = ?', bcrypt.hashSync(String(next), 10), user.id);
+  endSessions(user.id, req.sessionId); // sign out every other device; this one stays signed in
   log(user.id, 'changed own password');
   res.json({ ok: true });
 });

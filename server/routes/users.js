@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { all, get, log, pruneActivity, run } from '../db.js';
 import { fail, found, str } from '../lib/http.js';
+import { endSessions } from '../middleware/auth.js';
 
 // Both routers are mounted behind requireAdmin
 const r = Router();
@@ -39,7 +40,11 @@ r.put('/:id', (req, res) => {
   if (u.role === 'admin' && u.active && (role !== 'admin' || !active) && adminCount() <= 1) fail('At least one active admin is required');
   if (password && password.length < 6) fail('Password must be at least 6 characters');
   run('UPDATE users SET username = ?, name = ?, role = ?, active = ? WHERE id = ?', username, name, role, active, u.id);
-  if (password) run('UPDATE users SET password_hash = ? WHERE id = ?', bcrypt.hashSync(password, 10), u.id);
+  if (password) {
+    run('UPDATE users SET password_hash = ? WHERE id = ?', bcrypt.hashSync(password, 10), u.id);
+    // A reset password signs that login out everywhere (keeps the admin's own current sign-in)
+    endSessions(u.id, u.id === req.user.id ? req.sessionId : null);
+  }
   log(req.user.id, 'login updated', `${username}${password ? ' · password reset' : ''}${active ? '' : ' · disabled'}`);
   res.json({ ok: true });
 });

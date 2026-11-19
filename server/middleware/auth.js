@@ -10,25 +10,39 @@ export function requireAuth(req, res, next) {
     const payload = jwt.verify(token, secret);
     const user = get('SELECT * FROM users WHERE id = ? AND active = 1', payload.id);
     if (!user) throw new Error('inactive');
+    // Every sign-in has a session record. Signing out, the admin's "end session", and a
+    // password change mark it logged_out, which ends that sign-in everywhere right away.
+    // (Sessions only auto-closed as timed_out are tracking, not a sign-out, and stay valid.)
+    const session = payload.sid ? get('SELECT user_id, status FROM user_sessions WHERE id = ?', payload.sid) : null;
+    if (!session || session.user_id !== user.id || session.status === 'logged_out') throw new Error('ended');
     req.user = publicUser(user);
-    req.sessionId = payload.sid || null;
+    req.sessionId = payload.sid;
 
     // Refresh last active timestamp for current session (at most once a minute, so
     // simply viewing pages doesn't cause a database write on every request)
-    if (req.sessionId) {
-      try {
-        run(`UPDATE user_sessions SET last_active_at = datetime('now', 'localtime')
-             WHERE id = ? AND status = 'active' AND last_active_at < datetime('now', 'localtime', '-60 seconds')`,
-          req.sessionId);
-      } catch {
-        // non-blocking
-      }
+    try {
+      run(`UPDATE user_sessions SET last_active_at = datetime('now', 'localtime')
+           WHERE id = ? AND status = 'active' AND last_active_at < datetime('now', 'localtime', '-60 seconds')`,
+        req.sessionId);
+    } catch {
+      // non-blocking
     }
 
     next();
   } catch {
     res.status(401).json({ error: 'Please sign in again' });
   }
+}
+
+/** Sign a user out everywhere (except, optionally, the session making the change). */
+export function endSessions(userId, exceptSid = null) {
+  run(`UPDATE user_sessions
+       SET status = 'logged_out',
+           duration_seconds = CASE WHEN logout_time IS NULL
+             THEN MAX(0, CAST((strftime('%s', 'now', 'localtime') - strftime('%s', login_time)) AS INTEGER))
+             ELSE duration_seconds END,
+           logout_time = COALESCE(logout_time, datetime('now', 'localtime'))
+       WHERE user_id = ? AND status <> 'logged_out' AND id IS NOT ?`, userId, exceptSid);
 }
 
 export function requireAdmin(req, res, next) {

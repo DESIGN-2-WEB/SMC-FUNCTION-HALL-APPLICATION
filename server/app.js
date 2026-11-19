@@ -29,8 +29,11 @@ try {
 }
 
 const app = express();
-// Behind Vercel's proxy every request comes through it; locally only loopback proxies are trusted
-app.set('trust proxy', ON_VERCEL ? true : 'loopback');
+// Which proxies may report the visitor's address (used for login limits and the session log).
+// TRUST_PROXY = number of proxy hops in front of the app (e.g. 1 or 2 on a hosted platform);
+// without it only local proxies are trusted, so a visitor can't fake their address.
+const hops = Number(process.env.TRUST_PROXY);
+app.set('trust proxy', Number.isInteger(hops) && hops > 0 ? hops : ON_VERCEL ? true : 'loopback');
 app.use(express.json({ limit: '1mb' }));
 
 // A hosted copy without a database would keep data only until it restarts. Refuse to run
