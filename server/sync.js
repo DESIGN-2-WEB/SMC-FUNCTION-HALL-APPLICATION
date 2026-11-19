@@ -40,8 +40,7 @@ const DATE_COLS = new Set([
 export const VERSION_KEY = '_data_version';
 const PAGE = 1000;
 const CHUNK = 500;
-const READ_CHECK_MS = 3000; // re-check Supabase in the background this often
-const READ_BLOCK_MS = 60000; // after this long with no check, a page waits for one
+const READ_CHECK_MS = 3000; // re-check Supabase when the last check is older than this
 
 const columns = {};
 let localVersion = null;
@@ -278,17 +277,16 @@ function checkRemote() {
 }
 
 /**
- * Keep the local copy in step with Supabase without making pages wait:
- * - saves always check first (and wait), so they never build on old data;
- * - page loads are answered straight away and checked in the background, unless
- *   nothing was checked for a minute, then they wait for one check.
+ * Keep the local copy in step with Supabase before handling a request:
+ * - saves always check first;
+ * - other requests check when the last check is over 3 seconds old.
+ * Every request waits for the check (so logins, roles and data are never older than
+ * that), but requests arriving together share a single check, so a page that makes
+ * several calls waits for one round trip, not one per call.
  */
 export async function ensureFresh(isWrite) {
   if (!SYNC_ON) return;
-  const age = Date.now() - lastCheck;
-  if (isWrite || stale || age >= READ_BLOCK_MS) return checkRemote();
-  if (age >= READ_CHECK_MS)
-    checkRemote().catch(err => console.error('[sync] background check failed:', err.message));
+  if (isWrite || stale || Date.now() - lastCheck >= READ_CHECK_MS) return checkRemote();
 }
 
 /** Push pending changes. Throws if any change numbered in (startSeq, endSeq] failed to save. */
