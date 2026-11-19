@@ -7,12 +7,32 @@ import { endSessions, publicUser, requireAuth, signToken } from '../middleware/a
 const r = Router();
 export default r;
 
-// Brute-force guard, per 15 minutes: 10 wrong passwords for one login name, or 30 from one
-// address (higher, because a whole office can share one address behind a proxy)
+// Brute-force guard (15-minute window) that a stranger can't use to lock the real user out:
+// - one login name from one address: blocked after 10 wrong passwords;
+// - one address overall: blocked after 30 (higher: an office can share one address);
+// - one login name from anywhere: after 20 wrong passwords it is slowed to one try every
+//   10 seconds instead of blocked, so the real user waits a few seconds at most while
+//   guessing becomes far too slow to work.
+// Only real login names are tracked, and old entries are cleared, so the list stays small.
 const failures = new Map();
 const WINDOW = 15 * 60 * 1000;
-const USER_LIMIT = 10;
+const PAIR_LIMIT = 10;
 const IP_LIMIT = 30;
+const NAME_SLOW_AFTER = 20;
+const NAME_SLOW_GAP = 10 * 1000;
+
+const fresh = (k, now) => {
+  const f = failures.get(k);
+  return f && now - f.first < WINDOW ? f : null;
+};
+const recordFailure = (k, now) => {
+  const f = fresh(k, now);
+  failures.set(k, f ? { ...f, count: f.count + 1, last: now } : { count: 1, first: now, last: now });
+};
+const pruneFailures = now => {
+  if (failures.size < 500) return;
+  for (const [k, f] of failures) if (now - f.first >= WINDOW) failures.delete(k);
+};
 
 r.get('/demo', (req, res) => res.json({ demo: DEMO }));
 
@@ -46,22 +66,30 @@ r.post('/login', (req, res) => {
   const ip = String(req.ip || req.socket?.remoteAddress || '').replace('::ffff:', '').trim();
   const { username = '', password = '' } = req.body || {};
   const name = String(username).trim().toLowerCase();
-  // Two limits: per address, and per login name (which no proxy or header can get around)
-  const keys = [[`ip:${ip}`, IP_LIMIT], [`user:${name}`, USER_LIMIT]];
   const now = Date.now();
-  if (keys.some(([k, limit]) => { const f = failures.get(k); return f && f.count >= limit && now - f.first < WINDOW; }))
+  pruneFailures(now);
+  const ipKey = `ip:${ip}`;
+  const pairKey = `pair:${name}|${ip}`;
+  const nameKey = `name:${name}`;
+  const ipF = fresh(ipKey, now);
+  const pairF = fresh(pairKey, now);
+  if ((ipF && ipF.count >= IP_LIMIT) || (pairF && pairF.count >= PAIR_LIMIT))
     return res.status(429).json({ error: 'Too many attempts. Try again in a few minutes.' });
+  const nameF = fresh(nameKey, now);
+  if (nameF && nameF.count >= NAME_SLOW_AFTER && now - nameF.last < NAME_SLOW_GAP)
+    return res.status(429).json({ error: 'Too many attempts on this login. Wait 10 seconds and try again.' });
 
   const user = get('SELECT * FROM users WHERE username = ? AND active = 1', String(username).trim());
   if (!user || !bcrypt.compareSync(String(password), user.password_hash)) {
-    for (const [k] of keys) {
-      const f = failures.get(k);
-      const cur = f && now - f.first < WINDOW ? f : { count: 0, first: now };
-      failures.set(k, { ...cur, count: cur.count + 1 });
+    recordFailure(ipKey, now);
+    if (user) {
+      recordFailure(pairKey, now);
+      recordFailure(nameKey, now);
     }
     return res.status(401).json({ error: 'Wrong password' });
   }
-  for (const [k] of keys) failures.delete(k);
+  failures.delete(pairKey);
+  failures.delete(nameKey);
 
   const ua = req.headers['user-agent'] || '';
   const deviceInfo = parseDevice(ua);
