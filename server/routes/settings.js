@@ -10,8 +10,10 @@ export default r;
 export function getDBSettings() {
   const rows = all('SELECT key, value FROM settings');
   const s = { ...DEFAULT_SETTINGS };
+  // Only known settings: internal `_` keys (sync marker) and leftovers such as the removed
+  // WhatsApp API keys are never returned, even before startup has cleared them from the database
   for (const row of rows) {
-    if (!row.key.startsWith('_')) s[row.key] = row.value; // `_` keys are internal (sync marker)
+    if (Object.hasOwn(DEFAULT_SETTINGS, row.key)) s[row.key] = row.value;
   }
   return s;
 }
