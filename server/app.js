@@ -67,9 +67,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// A restore uploads the whole backup file in one request
-app.use('/api/backup/restore', express.json({ limit: '25mb' }));
-app.use(express.json({ limit: '1mb' }));
+// Request bodies up to 1 MB. A restore uploads the whole backup file, so its route reads its
+// own larger body, but only after the admin check (routes/backup.js)
+const smallJson = express.json({ limit: '1mb' });
+app.use((req, res, next) => (req.path === '/api/backup/restore' ? next() : smallJson(req, res, next)));
 
 // A hosted copy without a database would keep data only until it restarts. Refuse to run
 // rather than lose bookings (e.g. an old Vercel deployment left online after the move).

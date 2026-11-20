@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { all, db, log, run, tx } from '../db.js';
 import { fail } from '../lib/http.js';
 import { applyDefaults } from '../schema.js';
@@ -37,7 +37,8 @@ r.get('/', (req, res) => {
   res.json({ app: 'smc-function-hall', version: 1, created_at: new Date().toISOString(), data });
 });
 
-r.post('/restore', (req, res) => {
+// Mounted behind requireAuth + requireAdmin, so only the admin's upload is ever read
+r.post('/restore', express.json({ limit: '25mb' }), (req, res) => {
   const body = req.body || {};
   const data = body.data;
   if (body.app !== 'smc-function-hall' || body.version !== 1 || !data || typeof data !== 'object')
