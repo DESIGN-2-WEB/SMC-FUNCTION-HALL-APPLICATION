@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  Ban, BedDouble, CalendarCheck, CalendarPlus, CircleCheck, IndianRupee, LogIn, LogOut, Pencil, Printer, Smartphone, Trash2,
+  Ban, BedDouble, CalendarCheck, CalendarPlus, CircleCheck, IndianRupee, LogIn, LogOut, MoreHorizontal, Pencil, Printer, Smartphone, Trash2,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi, useRemove } from '../hooks.js';
@@ -98,15 +98,21 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
   if (isRoom && b.status === 'checked_in')
     actions.push(<Button key="out" icon={LogOut} disabled={busy}
       onClick={() => setStatus('checked_out', 'Guest checked out', balance > 0 && { title: 'Balance pending', message: `${inr(balance)} is still due from ${b.guest_name}. Check out anyway?`, confirmText: 'Check out' })}>Check out</Button>);
-  if (isRoom && onBookAnother && (b.status === 'reserved' || b.status === 'checked_in'))
-    actions.unshift(<Button key="more" variant="outline" icon={BedDouble} disabled={busy} onClick={() => onBookAnother(b)}>Add room for guest</Button>);
-  if (isRoom && (b.status === 'reserved' || b.status === 'checked_in'))
-    actions.unshift(<Button key="ext" variant="outline" icon={CalendarPlus} disabled={busy} onClick={() => setExtending(true)}>Extend stay</Button>);
   if (!isRoom && b.status === 'tentative')
     actions.push(<Button key="conf" variant="success" icon={CalendarCheck} disabled={busy} onClick={() => setStatus('confirmed', 'Booking confirmed')}>Confirm</Button>);
   if (!isRoom && b.status === 'confirmed')
     actions.push(<Button key="done" icon={CircleCheck} disabled={busy}
       onClick={() => setFinishing(true)}>Mark completed</Button>);
+
+  // Less-used actions sit in the "More" menu so the footer stays clear
+  const openStay = isRoom && (b.status === 'reserved' || b.status === 'checked_in');
+  const menu = [
+    openStay && { icon: CalendarPlus, label: 'Extend stay', onClick: () => setExtending(true) },
+    openStay && onBookAnother && { icon: BedDouble, label: 'Add room for guest', onClick: () => onBookAnother(b) },
+    isAdmin && { icon: Pencil, label: 'Edit booking', onClick: () => onEdit(b) },
+    !closed && { icon: Ban, label: 'Cancel booking', tone: 'rose', divider: true, onClick: () => setStatus('cancelled', 'Booking cancelled', { title: 'Cancel this booking?', message: 'The room/hall will become free for these dates. Payments already received stay on record.', danger: true, confirmText: 'Cancel booking' }) },
+    isAdmin && { icon: Trash2, label: 'Delete booking', tone: 'rose', onClick: remove },
+  ].filter(Boolean);
 
   return (
     <Modal
@@ -121,13 +127,7 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
       }
       footer={
         <>
-          {isAdmin && <Button variant="danger-soft" icon={Trash2} onClick={remove} className="mr-auto">Delete</Button>}
-          {!closed && (
-            <Button variant="ghost" icon={Ban} disabled={busy}
-              onClick={() => setStatus('cancelled', 'Booking cancelled', { title: 'Cancel this booking?', message: 'The room/hall will become free for these dates. Payments already received stay on record.', danger: true, confirmText: 'Cancel booking' })}>
-              Cancel booking
-            </Button>
-          )}
+          {menu.length > 0 && <MoreMenu items={menu} disabled={busy} />}
           <Button variant="outline" icon={Printer} onClick={() => printReceipt(kind, b, settings)}>Receipt</Button>
           <Button
             variant="outline"
@@ -137,7 +137,6 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
           >
             WhatsApp
           </Button>
-          {isAdmin && <Button variant="outline" icon={Pencil} onClick={() => onEdit(b)}>Edit</Button>}
           {actions}
         </>
       }
@@ -242,6 +241,49 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
         </Form>
       )}
     </Modal>
+  );
+}
+
+/** "More" button that opens a small list of actions above it. */
+function MoreMenu({ items, disabled }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = e => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const esc = e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc, true);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', esc, true);
+    };
+  }, [open]);
+  return (
+    <div ref={ref} className="relative mr-auto">
+      <Button variant="outline" icon={MoreHorizontal} disabled={disabled} onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        More
+      </Button>
+      {open && (
+        <div role="menu" className="absolute bottom-full left-0 z-20 mb-2 w-56 animate-pop overflow-hidden rounded-2xl border border-stone-200 bg-white py-1.5 shadow-xl">
+          {items.map(({ icon: Icon, label, onClick, tone, divider }) => (
+            <button
+              key={label}
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); onClick(); }}
+              className={cn(
+                'flex w-full cursor-pointer items-center gap-2.5 px-3.5 py-2 text-left text-sm font-medium transition',
+                divider && 'mt-1.5 border-t border-stone-100 pt-2.5',
+                tone === 'rose' ? 'text-rose-600 hover:bg-rose-50' : 'text-ink-800 hover:bg-stone-50',
+              )}
+            >
+              <Icon size={16} className="shrink-0" /> {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
