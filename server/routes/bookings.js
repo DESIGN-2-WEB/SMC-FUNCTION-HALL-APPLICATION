@@ -298,14 +298,16 @@ function bookingRouter(kind) {
     res.status(201).json(load(b.id));
   });
 
-  // End of an event: power meter reading and generator hours are added to the hall bill and the
-  // event is marked completed. Rates come from the booking and Settings, never from the browser,
-  // so staff can record usage without being able to change prices. Only the admin can redo a
-  // completed bill.
-  if (kind === 'hall') r.post('/:id/final-bill', (req, res) => {
+  // Power meter reading and generator hours, entered from the event day onwards (they can be
+  // corrected until the event is completed). Rates come from the booking and Settings, never
+  // from the browser, so staff record usage without being able to change prices. After the
+  // event is completed only the admin can change them.
+  if (kind === 'hall') r.post('/:id/extra-charges', (req, res) => {
     const b = load(req.params.id);
+    const isAdmin = req.user.role === 'admin';
     if (b.status === 'cancelled') fail('This booking is cancelled');
-    if (b.status === 'completed' && req.user.role !== 'admin') fail('This event is already completed. Ask the admin to change its bill', 403);
+    if (b.status === 'completed' && !isAdmin) fail('This event is already completed. Ask the admin to change its bill', 403);
+    if (!isAdmin && b.event_date > today()) fail(`Power and generator can be added from the event day (${b.event_date})`);
     const settings = getDBSettings();
     const power_start = Math.max(0, num(req.body.power_start));
     const power_end = Math.max(0, num(req.body.power_end));
@@ -323,11 +325,11 @@ function bookingRouter(kind) {
     const base = (Number(b.total) || 0) - (Number(b.power_amount) || 0) - (Number(b.generator_amount) || 0);
     const total = Math.max(0, base + power_amount + generator_amount);
     run(`UPDATE hall_bookings SET power_start = ?, power_end = ?, power_units = ?, power_rate = ?, power_amount = ?,
-           generator_type = ?, generator_hours = ?, generator_rate = ?, generator_amount = ?, total = ?, status = 'completed'
+           generator_type = ?, generator_hours = ?, generator_rate = ?, generator_amount = ?, total = ?
          WHERE id = ?`,
       power_start, power_end, power_units, power_rate, power_amount,
       generator_type, generator_hours, generator_rate, generator_amount, total, b.id);
-    log(req.user.id, 'hall final bill', `${K.label(b)} · power ${inr(power_amount)} · generator ${inr(generator_amount)} · total ${inr(total)}`);
+    log(req.user.id, 'hall power & generator', `${K.label(b)} · power ${inr(power_amount)} · generator ${inr(generator_amount)} · total ${inr(total)}`);
     res.json(load(b.id));
   });
 

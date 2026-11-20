@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Ban, BedDouble, CalendarCheck, CalendarPlus, CircleCheck, IndianRupee, LogIn, LogOut, MoreHorizontal, Pencil, Printer, Smartphone, Trash2,
+  Ban, BedDouble, CalendarCheck, CalendarPlus, CircleCheck, IndianRupee, LogIn, LogOut, MoreHorizontal, Pencil, Printer, Smartphone, Trash2, Zap,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi, useRemove } from '../hooks.js';
@@ -22,7 +22,7 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
   const [busy, setBusy] = useState(false);
   const [waOpen, setWaOpen] = useState(false);
   const [extending, setExtending] = useState(false);
-  const [finishing, setFinishing] = useState(false);
+  const [chargesOpen, setChargesOpen] = useState(false);
 
   const run = async (fn, msg) => {
     setBusy(true);
@@ -98,11 +98,24 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
   if (isRoom && b.status === 'checked_in')
     actions.push(<Button key="out" icon={LogOut} disabled={busy}
       onClick={() => setStatus('checked_out', 'Guest checked out', balance > 0 && { title: 'Balance pending', message: `${inr(balance)} is still due from ${b.guest_name}. Check out anyway?`, confirmText: 'Check out' })}>Check out</Button>);
+  // Hall power & generator: from the event day until the event is completed (admin any time)
+  const hasExtras = Number(b.power_amount) > 0 || Number(b.generator_amount) > 0;
+  const eventDayReached = !isRoom && b.event_date <= today();
+  const canAddExtras = !isRoom && b.status !== 'cancelled'
+    && (isAdmin || (['tentative', 'confirmed'].includes(b.status) && eventDayReached));
   if (!isRoom && b.status === 'tentative')
     actions.push(<Button key="conf" variant="success" icon={CalendarCheck} disabled={busy} onClick={() => setStatus('confirmed', 'Booking confirmed')}>Confirm</Button>);
   if (!isRoom && b.status === 'confirmed')
     actions.push(<Button key="done" icon={CircleCheck} disabled={busy}
-      onClick={() => setFinishing(true)}>Mark completed</Button>);
+      onClick={() => setStatus('completed', 'Event marked completed', (balance > 0 || !hasExtras) && {
+        title: 'Mark this event completed?',
+        message: [
+          !hasExtras && 'No power or generator bill has been added yet.',
+          balance > 0 && `${inr(balance)} is still due.`,
+          'Staff cannot change the bill after this.',
+        ].filter(Boolean).join(' '),
+        confirmText: 'Mark completed',
+      })}>Mark completed</Button>);
 
   // Less-used actions sit in the "More" menu so the footer stays clear
   const openStay = isRoom && (b.status === 'reserved' || b.status === 'checked_in');
@@ -142,13 +155,6 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
       }
     >
       {waOpen && <WhatsAppModal kind={kind} booking={b} onClose={() => setWaOpen(false)} />}
-      {finishing && (
-        <FinalBillModal
-          booking={b}
-          onClose={() => setFinishing(false)}
-          onDone={async () => { setFinishing(false); await reload(); onChanged?.(); }}
-        />
-      )}
       {extending && (
         <ExtendStayModal
           booking={b}
@@ -180,10 +186,27 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
 
       {!isRoom && (
         <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50/70 p-4">
-          <div className="flex items-center justify-between border-b border-stone-200/60 pb-2 mb-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-stone-200/60 pb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-stone-600">Bill Breakdown</span>
-            <span className="text-xs text-stone-500 font-medium">Rent + Power + Generator</span>
+            {canAddExtras && !chargesOpen ? (
+              <Button size="sm" variant="outline" icon={Zap} onClick={() => setChargesOpen(true)}>
+                {hasExtras ? 'Change power & generator' : 'Add power & generator'}
+              </Button>
+            ) : !chargesOpen && (
+              <span className="text-xs font-medium text-stone-500">
+                {b.status === 'cancelled' ? 'Rent + Power + Generator'
+                  : b.status === 'completed' ? 'Final bill'
+                    : `Power & generator can be added from ${fmtDate(b.event_date)}`}
+              </span>
+            )}
           </div>
+          {chargesOpen && (
+            <ExtraChargesForm
+              booking={b}
+              onCancel={() => setChargesOpen(false)}
+              onDone={async () => { setChargesOpen(false); await reload(); onChanged?.(); }}
+            />
+          )}
           <div className="grid grid-cols-3 gap-3 text-sm">
             <div className="rounded-xl bg-white p-2.5 border border-stone-200">
               <p className="text-[11px] text-stone-500 uppercase tracking-wider font-semibold">Hall Rent</p>
@@ -288,10 +311,11 @@ function MoreMenu({ items, disabled }) {
 }
 
 /**
- * End of an event: enter the power meter reading and generator hours. Their charges are added
- * to the hall bill and the booking is marked completed, so the balance shown is the final one.
+ * Power meter reading and generator hours for a hall booking, entered inside the booking panel
+ * from the event day. Their charges are added to the hall bill; the server works out the
+ * amounts from the booking's and Settings' rates.
  */
-function FinalBillModal({ booking: b, onClose, onDone }) {
+function ExtraChargesForm({ booking: b, onCancel, onDone }) {
   const { settings } = useSettings();
   const { toast } = useUI();
   const powerRate = Number(b.power_rate) || Number(settings.power_rate) || 15;
@@ -323,14 +347,13 @@ function FinalBillModal({ booking: b, onClose, onDone }) {
   const genAmount = f.generator_type ? Math.round((Number(f.generator_hours) || 0) * genRate) : 0;
   // The bill without any earlier power/generator charges (hall rent, or a custom amount)
   const base = (Number(b.total) || 0) - (Number(b.power_amount) || 0) - (Number(b.generator_amount) || 0);
-  const finalTotal = base + powerAmount + genAmount;
-  const due = finalTotal - (Number(b.paid) || 0);
+  const newTotal = base + powerAmount + genAmount;
+  const due = newTotal - (Number(b.paid) || 0);
 
   const submit = async () => {
     setSaving(true);
     try {
-      // The server works out the amounts from the booking's and Settings' rates
-      await api(`/hall-bookings/${b.id}/final-bill`, {
+      await api(`/hall-bookings/${b.id}/extra-charges`, {
         method: 'POST',
         body: {
           power_start: Number(f.power_start) || 0,
@@ -340,7 +363,7 @@ function FinalBillModal({ booking: b, onClose, onDone }) {
           generator_hours: f.generator_type ? Number(f.generator_hours) || 0 : 0,
         },
       });
-      toast(due > 0 ? `Event completed · ${inr(due)} still to collect` : 'Event completed and fully paid');
+      toast(`Power & generator saved · bill now ${inr(newTotal)}`);
       await onDone();
     } catch (e) {
       toast(e.message, 'error');
@@ -349,64 +372,50 @@ function FinalBillModal({ booking: b, onClose, onDone }) {
   };
 
   return (
-    <Modal
-      size="lg"
-      title="Final bill"
-      subtitle={`${b.customer_name} · ${b.hall_name} · ${fmtDate(b.event_date)}`}
-      onClose={onClose}
-      footer={<>
-        <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button form="final-bill-form" type="submit" variant="gold" icon={CircleCheck} loading={saving}>Save bill & mark completed</Button>
-      </>}
-    >
-      <Form id="final-bill-form" onSubmit={submit} className="space-y-4">
-        <p className="text-sm text-stone-600">
-          Enter the power meter reading and generator use now that the event is over. Leave them empty if not used.
+    <Form onSubmit={submit} className="mb-3 space-y-3 rounded-xl border border-gold-300 bg-white p-3">
+      <div>
+        <p className="mb-2 text-xs font-semibold tracking-wider text-stone-500 uppercase">Power bill · {inr(powerRate)}/unit</p>
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Start reading">
+            <Input type="number" min="0" step="any" placeholder="0" value={f.power_start} onChange={e => set('power_start', e.target.value)} />
+          </Field>
+          <Field label="End reading">
+            <Input type="number" min="0" step="any" placeholder="0" value={f.power_end} onChange={e => set('power_end', e.target.value)} />
+          </Field>
+          <Field label="Units used">
+            <Input type="number" min="0" step="any" placeholder="0" value={f.power_units} onChange={e => set('power_units', e.target.value)} />
+          </Field>
+        </div>
+      </div>
+      <div>
+        <p className="mb-2 text-xs font-semibold tracking-wider text-stone-500 uppercase">Generator bill</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Generator">
+            <Select
+              value={f.generator_type}
+              onChange={v => set('generator_type', v)}
+              options={[{ value: '', label: 'Not used' }, ...generators.map(g => ({ value: g.name, label: `${g.name} (${inr(g.rate)}/hr)` }))]}
+            />
+          </Field>
+          <Field label="Hours used">
+            <Input type="number" min="0" step="0.5" placeholder="0" disabled={!f.generator_type} value={f.generator_hours} onChange={e => set('generator_hours', e.target.value)} />
+          </Field>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">
+        <p className="text-xs text-stone-600">
+          Power + generator <b className="text-gold-800">{inr(powerAmount + genAmount)}</b> · new bill <b className="text-ink-900">{inr(newTotal)}</b>
+          {' · '}
+          <span className={due > 0 ? 'font-semibold text-rose-600' : 'font-semibold text-emerald-700'}>
+            {due > 0 ? `${inr(due)} to collect` : 'fully paid'}
+          </span>
         </p>
-        <div className="rounded-xl border border-stone-200 p-3">
-          <p className="mb-2 text-xs font-semibold tracking-wider text-stone-500 uppercase">Power bill · {inr(powerRate)}/unit</p>
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Start reading">
-              <Input type="number" min="0" step="any" placeholder="0" value={f.power_start} onChange={e => set('power_start', e.target.value)} />
-            </Field>
-            <Field label="End reading">
-              <Input type="number" min="0" step="any" placeholder="0" value={f.power_end} onChange={e => set('power_end', e.target.value)} />
-            </Field>
-            <Field label="Units used">
-              <Input type="number" min="0" step="any" placeholder="0" value={f.power_units} onChange={e => set('power_units', e.target.value)} />
-            </Field>
-          </div>
+        <div className="flex gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={onCancel}>Cancel</Button>
+          <Button type="submit" size="sm" variant="gold" icon={Zap} loading={saving}>Save</Button>
         </div>
-        <div className="rounded-xl border border-stone-200 p-3">
-          <p className="mb-2 text-xs font-semibold tracking-wider text-stone-500 uppercase">Generator bill</p>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Generator">
-              <Select
-                value={f.generator_type}
-                onChange={v => set('generator_type', v)}
-                options={[{ value: '', label: 'Not used' }, ...generators.map(g => ({ value: g.name, label: `${g.name} (${inr(g.rate)}/hr)` }))]}
-              />
-            </Field>
-            <Field label="Hours used">
-              <Input type="number" min="0" step="0.5" placeholder="0" disabled={!f.generator_type} value={f.generator_hours} onChange={e => set('generator_hours', e.target.value)} />
-            </Field>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            ['Hall bill', inr(base), 'text-ink-900'],
-            ['Power + generator', inr(powerAmount + genAmount), 'text-gold-800'],
-            ['Final bill', inr(finalTotal), 'text-ink-900'],
-            ['Still to collect', inr(Math.max(0, due)), due > 0 ? 'text-rose-600' : 'text-emerald-700'],
-          ].map(([l, v, c]) => (
-            <div key={l} className="rounded-2xl bg-stone-50 p-3">
-              <p className="text-[11px] font-semibold tracking-wider text-stone-400 uppercase">{l}</p>
-              <p className={cn('mt-1 text-sm font-semibold', c)}>{v}</p>
-            </div>
-          ))}
-        </div>
-      </Form>
-    </Modal>
+      </div>
+    </Form>
   );
 }
 

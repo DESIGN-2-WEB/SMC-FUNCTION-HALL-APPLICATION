@@ -584,14 +584,14 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
           <div className="flex items-start gap-2.5 rounded-2xl border border-stone-200 bg-stone-50/70 p-3.5 text-xs text-stone-600 sm:col-span-2">
             <Zap size={16} className="mt-0.5 shrink-0 text-gold-600" />
             <p>
-              <b className="text-ink-900">Power and generator bills are added after the event.</b> When the event ends, open this booking
-              and press <b>Mark completed</b> to enter the meter reading and generator hours. They are then added to the final bill.
+              <b className="text-ink-900">Power and generator bills are added on the event day.</b> From the event date, open this booking
+              and use <b>Add power &amp; generator</b> in its bill to enter the meter reading and generator hours.
             </p>
           </div>
         )}
 
         <Field label={editing ? 'Final bill total (₹)' : 'Bill total now (₹)'} className="sm:col-span-2"
-          hint={!autoTotal ? 'Custom total entered manually' : editing ? 'Calculated automatically (Rent + Power + Gen)' : 'Hall rent. Power and generator are added after the event'}>
+          hint={!autoTotal ? 'Custom total entered manually' : editing ? 'Calculated automatically (Rent + Power + Gen)' : 'Hall rent. Power and generator are added on the event day'}>
           <div className="flex gap-2">
             <Input type="number" min="0" className="font-semibold text-lg" value={f.total}
               onChange={e => { setAutoTotal(false); set('total', e.target.value); }} />
