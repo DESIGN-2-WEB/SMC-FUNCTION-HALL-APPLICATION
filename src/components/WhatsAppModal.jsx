@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { Check, Copy, ExternalLink, MessageCircle, Send, Smartphone } from 'lucide-react';
-import { api } from '../api.js';
+import { Check, Copy, Smartphone } from 'lucide-react';
 import { useSettings } from '../settings.jsx';
-import { Badge, Button, Field, Input, Modal, Segmented, useUI } from './ui.jsx';
+import { Button, Field, Input, Modal, Segmented, useUI } from './ui.jsx';
 import { buildBulkRentalMessage, buildHallMessage, buildPackageMessage, buildRoomMessage, buildSupplyMessage, cleanPhone, openWhatsApp } from '../utils/whatsapp.js';
 
 export function WhatsAppIcon({ size = 16, className = '' }) {
@@ -43,7 +42,6 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, o
 
   const [template, setTemplate] = useState('booking');
   const [phone, setPhone] = useState(() => (isSupply ? '' : booking?.phone || ''));
-  const [sendingApi, setSendingApi] = useState(false);
   const [copied, setCopied] = useState(false);
 
   // Generate message based on selected template
@@ -76,33 +74,6 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, o
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast('Could not copy to clipboard', 'error');
-    }
-  };
-
-  const handleApiSend = async () => {
-    if (!isValidNumber) return toast('Please enter a valid mobile number', 'error');
-    setSendingApi(true);
-    try {
-      const res = await api('/whatsapp/send', {
-        method: 'POST',
-        body: {
-          phone: cleanedNumber,
-          message: text,
-          kind: isRoom ? 'room' : isHall ? 'hall' : 'supply',
-          booking_id: booking?.id,
-          recipient_name: isRoom ? booking?.guest_name : isHall ? booking?.customer_name : undefined,
-        },
-      });
-      if (res.direct) {
-        openWhatsApp(phone, text);
-        toast('Opened in WhatsApp');
-      } else {
-        toast('Message sent via WhatsApp Bot!');
-      }
-    } catch (err) {
-      toast(err.message, 'error');
-    } finally {
-      setSendingApi(false);
     }
   };
 
@@ -183,26 +154,6 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, o
           </div>
         </div>
 
-        {/* Automated WhatsApp Bot Option */}
-        {settings.whatsapp_enabled === '1' && settings.whatsapp_provider && settings.whatsapp_provider !== 'direct' && (
-          <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs">
-            <div>
-              <p className="font-semibold text-emerald-950">Automated WhatsApp Bot Active</p>
-              <p className="text-emerald-700">Provider: {settings.whatsapp_provider.toUpperCase()}</p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              icon={Send}
-              loading={sendingApi}
-              onClick={handleApiSend}
-              className="border-emerald-300 text-emerald-800 hover:bg-emerald-100"
-            >
-              Send via Bot API
-            </Button>
-          </div>
-        )}
       </div>
     </Modal>
   );

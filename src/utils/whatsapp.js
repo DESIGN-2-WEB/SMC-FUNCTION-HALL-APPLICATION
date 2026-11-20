@@ -1,4 +1,4 @@
-import { esc, fmtDate, fmtDateTime, inr, nights, today } from '../utils.js';
+import { esc, fmtDate, fmtDateTime, inr, nights, roomTimes, slotWithTime, today } from '../utils.js';
 
 /**
  * Normalizes phone numbers to standard international format (defaults to India +91).
@@ -25,6 +25,7 @@ export function buildRoomMessage(b, settings, type = 'booking') {
   const address = settings?.address || 'Next to BOI, K.T. Road, Palasa – Kasibugga';
   const phone = settings?.phone || '94411 17278 / 94410 89616';
   const n = nights(b.check_in, b.check_out);
+  const t = roomTimes(settings);
   const balance = Math.max(0, (Number(b.total) || 0) - (Number(b.paid) || 0));
 
   if (type === 'check_in') {
@@ -37,8 +38,8 @@ Welcome! You have successfully *checked in* to *${b.room_name}*.
 
 📌 *Booking ID:* #${b.id}
 🛏 *Room:* ${b.room_name}
-📅 *Check-in:* ${fmtDate(b.check_in)}
-📅 *Check-out:* ${fmtDate(b.check_out)} (${n} night${n === 1 ? '' : 's'})
+📅 *Check-in:* ${fmtDate(b.check_in)}, ${t.checkIn}
+📅 *Check-out:* ${fmtDate(b.check_out)} by ${t.checkOut} (${n} night${n === 1 ? '' : 's'})
 👥 *Guests:* ${b.guests}
 
 📞 *Front Desk Assistance:* ${phone}
@@ -79,8 +80,8 @@ Your room booking has been *confirmed*!
 
 📌 *Booking Reference:* #${b.id}
 🛏 *Room:* ${b.room_name}
-📅 *Check-in Date:* ${fmtDate(b.check_in)}
-📅 *Check-out Date:* ${fmtDate(b.check_out)}
+📅 *Check-in:* ${fmtDate(b.check_in)}, ${t.checkIn}
+📅 *Check-out:* ${fmtDate(b.check_out)} by ${t.checkOut}
 🌙 *Duration:* ${n} night${n === 1 ? '' : 's'}
 👥 *No. of Guests:* ${b.guests}
 ${b.discount > 0 ? `🏷 *Discount Applied:* ${inr(b.discount)}\n` : ''}💰 *Total Room Fee:* ${inr(b.total)}
@@ -104,7 +105,7 @@ export function buildHallMessage(b, settings, type = 'booking') {
   const address = settings?.address || 'Next to BOI, K.T. Road, Palasa – Kasibugga';
   const phone = settings?.phone || '94411 17278 / 94410 89616';
   const balance = Math.max(0, (Number(b.total) || 0) - (Number(b.paid) || 0));
-  const slotName = b.slot === 'morning' ? 'Morning Slot' : b.slot === 'evening' ? 'Evening Slot' : 'Full Day Slot';
+  const slotName = slotWithTime(b.slot, settings);
 
   if (type === 'payment' || type === 'completed') {
     return (
@@ -213,7 +214,7 @@ export function buildPackageMessage(pkg, settings) {
 
   let hallSection = '';
   if (pkg.hall) {
-    hallSection = `\n🏛️ *Banquet Hall:* ${pkg.hall.hall_name} (${pkg.hall.slot === 'half' ? 'Half Day' : 'Full Day'}) — ${inr(pkg.hall_amount || pkg.hall.rent)}`;
+    hallSection = `\n🏛️ *Banquet Hall:* ${pkg.hall.hall_name} (${slotWithTime(pkg.hall.slot, settings)}) — ${inr(pkg.hall_amount || pkg.hall.rent)}`;
   }
 
   let roomsSection = '';
@@ -235,7 +236,7 @@ export function buildPackageMessage(pkg, settings) {
 👤 *Customer:* ${pkg.customer_name}
 📞 *Phone:* ${pkg.phone}
 🎊 *Event:* ${pkg.event_type || 'Function'}
-📅 *Event Date:* ${fmtDate(pkg.event_date)} (${pkg.slot === 'half' ? 'Half Day' : 'Full Day'})
+📅 *Event Date:* ${fmtDate(pkg.event_date)} (${slotWithTime(pkg.slot, settings)})
 ${hallSection}${roomsSection}${suppliesSection}
 
 ━━━━━━━━━━━━━━━━━━━━

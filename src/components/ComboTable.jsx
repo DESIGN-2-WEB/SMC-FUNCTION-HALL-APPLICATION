@@ -1,9 +1,9 @@
 import { ChevronRight } from 'lucide-react';
 import { Badge, cn } from './ui.jsx';
-import { SLOTS, fmtDate, inr, relDay } from '../utils.js';
+import { fmtDate, inr, relDay, slotName } from '../utils.js';
 import { useRowsReveal } from '../motion.js';
 
-const slotLabel = s => SLOTS[s] || (s === 'half' ? 'Half day' : 'Full day');
+const slotLabel = slotName;
 
 /** List of combo bookings (hall + rooms + supplies on one bill). */
 export default function ComboTable({ combos, onOpen }) {

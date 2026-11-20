@@ -14,7 +14,7 @@ import WhatsAppModal from '../components/WhatsAppModal.jsx';
 import {
   Badge, Button, Card, EmptyState, Field, Form, Input, Modal, PageHeader, PageLoader, Segmented, Textarea, cn, useUI,
 } from '../components/ui.jsx';
-import { HALL_STATUS, SLOTS, fmtDate, inr, relDay, today } from '../utils.js';
+import { HALL_STATUS, fmtDate, inr, relDay, slotName, slotTime, today } from '../utils.js';
 import { useRowsReveal } from '../motion.js';
 
 const FILTERS = [
@@ -280,7 +280,7 @@ export default function Halls() {
               <div className={cn('relative mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl p-3 text-sm', isCombo ? 'bg-white/5' : 'bg-stone-50')}>
                 <div className="min-w-0">
                   {h.today.length ? (
-                    <p><Badge tone="rose" dot>Booked today</Badge> <span className="ml-1">{h.today.map(t => `${t.customer_name} (${SLOTS[t.slot]})`).join(', ')}</span></p>
+                    <p><Badge tone="rose" dot>Booked today</Badge> <span className="ml-1">{h.today.map(t => `${t.customer_name} (${slotName(t.slot)})`).join(', ')}</span></p>
                   ) : (
                     <p><Badge tone="green" dot>Free today</Badge>
                       <span className={cn('ml-2', isCombo ? 'text-ink-200' : 'text-stone-500')}>
@@ -456,7 +456,7 @@ export default function Halls() {
                     >
                       <td className="td whitespace-nowrap">
                         <p className="font-medium group-hover:text-gold-900 transition-colors">{fmtDate(b.event_date)}</p>
-                        <p className="text-xs text-stone-500">{SLOTS[b.slot]} · {relDay(b.event_date)}</p>
+                        <p className="text-xs text-stone-500">{slotName(b.slot)} · {relDay(b.event_date)}</p>
                       </td>
                       <td className="td">
                         <p className="font-medium text-ink-900 group-hover:text-gold-900 transition-colors">{b.customer_name}</p>
@@ -536,6 +536,7 @@ export default function Halls() {
 }
 
 function HallForm({ hall, allHalls = [], onClose, onSaved }) {
+  const { settings } = useSettings();
   const { toast } = useUI();
   const isCombo = Boolean(hall?.isCombo || hall?.is_combo || /combo/i.test(hall?.name || ''));
   // Only individual standalone halls can be part of a combo
@@ -861,7 +862,7 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
             label="Full day package rate (₹)"
             hint={isCombo && combinedFullRate > 0 && Number(f.rate_full) < combinedFullRate
               ? `Discounted: saves ${inr(combinedFullRate - Number(f.rate_full))}`
-              : 'Flat full day rate'}
+              : slotTime('full', settings)}
           >
             <Input
               type="number"
@@ -878,7 +879,7 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
             label="Half day package rate (₹)"
             hint={isCombo && combinedHalfRate > 0 && Number(f.rate_half) < combinedHalfRate
               ? `Discounted: saves ${inr(combinedHalfRate - Number(f.rate_half))}`
-              : 'Morning or evening slot'}
+              : slotTime('half', settings)}
           >
             <Input
               type="number"

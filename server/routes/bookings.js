@@ -10,7 +10,8 @@ import { getDBSettings } from './settings.js';
  * table, fields, validation and clash rule.
  */
 
-const SLOT_NAMES = { morning: 'morning', evening: 'evening', full: 'full day' };
+// Full day (7 AM to 3 AM) or half day (7 AM to 3 PM); morning/evening are kept for older bookings
+const SLOT_NAMES = { full: 'full day', half: 'half day', morning: 'morning', evening: 'evening' };
 
 const KINDS = {
   room: {
@@ -146,9 +147,8 @@ const KINDS = {
         `SELECT b.id, b.customer_name, b.slot, b.hall_id, h.name AS hall_name, h.is_combo, h.included_hall_ids
          FROM hall_bookings b
          JOIN halls h ON h.id = b.hall_id
-         WHERE b.id <> ? AND b.event_date = ? AND b.status IN ('tentative','confirmed')
-         AND (b.slot = ? OR b.slot = 'full' OR ? = 'full')`,
-        id, d.event_date, d.slot, d.slot
+         WHERE b.id <> ? AND b.event_date = ? AND b.status IN ('tentative','confirmed')`,
+        id, d.event_date
       );
 
       for (const b of allBookings) {
@@ -166,7 +166,8 @@ const KINDS = {
           || (b.is_combo && affectedIds.includes(b.hall_id));
 
         if (overlap) {
-          return `${b.hall_name || 'Hall'} is already booked by ${b.customer_name} for the ${SLOT_NAMES[b.slot]} on that date`;
+          // Both slots start at 7 AM, so a hall takes one booking per date
+          return `${b.hall_name || 'Hall'} is already booked by ${b.customer_name} (${SLOT_NAMES[b.slot] || 'full day'}) on that date`;
         }
       }
       return null;

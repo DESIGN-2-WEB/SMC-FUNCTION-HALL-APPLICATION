@@ -16,19 +16,8 @@ export function getDBSettings() {
   return s;
 }
 
-// API keys and the webhook address (which can carry a token) never leave the server.
-// The browser only learns whether each one is set: it gets SECRET_MASK instead of the value,
-// and sending SECRET_MASK back on save keeps the stored value unchanged.
-const SECRET_KEYS = ['whatsapp_api_token', 'whatsapp_twilio_sid', 'whatsapp_twilio_token', 'whatsapp_webhook_url'];
-export const SECRET_MASK = '••••••••';
-const forBrowser = s => {
-  const out = { ...s };
-  for (const k of SECRET_KEYS) out[k] = s[k] ? SECRET_MASK : '';
-  return out;
-};
-
 r.get('/', (req, res) => {
-  res.json(forBrowser(getDBSettings()));
+  res.json(getDBSettings());
 });
 
 // Quick check after a deploy: reaching this means the database loaded (the sync step runs first)
@@ -41,7 +30,6 @@ r.put('/', requireAuth, requireAdmin, (req, res) => {
   tx(() => {
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
       if (body[key] !== undefined) {
-        if (SECRET_KEYS.includes(key) && body[key] === SECRET_MASK) continue; // unchanged secret
         let val = body[key];
         if (typeof val === 'object' && val !== null) {
           val = JSON.stringify(val);
@@ -51,5 +39,5 @@ r.put('/', requireAuth, requireAdmin, (req, res) => {
     }
   });
   log(req.user.id, 'settings updated', 'Updated property info & extra charges');
-  res.json(forBrowser(getDBSettings()));
+  res.json(getDBSettings());
 });

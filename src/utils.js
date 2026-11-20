@@ -97,7 +97,24 @@ export const GENERATOR_OPTIONS = [
 
 export const POWER_UNIT_RATE = 15;
 
-export const SLOTS = { morning: 'Morning', evening: 'Evening', full: 'Full day' };
+// A hall is booked for a full day or a half day. Morning/evening are only for older bookings.
+export const SLOTS = { full: 'Full day', half: 'Half day' };
+const OLD_SLOTS = { morning: 'Morning', evening: 'Evening' };
+export const slotName = s => SLOTS[s] || OLD_SLOTS[s] || 'Full day';
+/** Hall hours for a slot, from Settings (e.g. "7:00 AM to 3:00 PM"); empty for old slots. */
+export const slotTime = (s, settings) =>
+  s === 'half' ? settings?.hall_half_time || '7:00 AM to 3:00 PM'
+    : !s || s === 'full' ? settings?.hall_full_time || '7:00 AM to 3:00 AM (next day)'
+      : '';
+export const slotWithTime = (s, settings) => {
+  const t = slotTime(s, settings);
+  return t ? `${slotName(s)} (${t})` : slotName(s);
+};
+/** Room check-in / check-out times from Settings. */
+export const roomTimes = settings => ({
+  checkIn: settings?.room_checkin_time || '11:00 AM',
+  checkOut: settings?.room_checkout_time || '12:00 PM',
+});
 export const METHODS = ['Cash', 'UPI', 'Card', 'Bank transfer', 'Cheque'];
 export const EVENT_TYPES = [
   'Wedding',

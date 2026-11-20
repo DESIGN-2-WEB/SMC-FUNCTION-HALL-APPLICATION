@@ -35,7 +35,7 @@ import {
   cn,
   useUI,
 } from './ui.jsx';
-import { SLOTS, addDays, fmtDate, inr, nights, today } from '../utils.js';
+import { SLOTS, addDays, fmtDate, inr, nights, slotName, today } from '../utils.js';
 import { Select } from './pickers.jsx';
 
 export default function BulkPackageModal({ onClose, onSaved }) {
@@ -386,7 +386,7 @@ export default function BulkPackageModal({ onClose, onSaved }) {
                   <p className="font-bold text-ink-900 text-sm mt-2">
                     {inr(rate)}{' '}
                     <span className="text-[11px] font-normal text-stone-500">
-                      ({SLOTS[slot]})
+                      ({slotName(slot)})
                     </span>
                   </p>
                   {isSelected && (

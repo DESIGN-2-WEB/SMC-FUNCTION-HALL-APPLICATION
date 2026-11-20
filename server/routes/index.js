@@ -8,7 +8,6 @@ import { hallBookings, roomBookings } from './bookings.js';
 import payments from './payments.js';
 import supplies from './supplies.js';
 import packages from './packages.js';
-import whatsapp from './whatsapp.js';
 import dashboard from './dashboard.js';
 import users, { activity } from './users.js';
 
@@ -26,7 +25,6 @@ api.use('/hall-bookings', hallBookings);
 api.use('/payments', payments);
 api.use('/supplies', supplies);
 api.use('/packages', packages);
-api.use('/whatsapp', whatsapp);
 api.use('/users', requireAdmin, users);
 api.use('/activity', requireAdmin, activity);
 

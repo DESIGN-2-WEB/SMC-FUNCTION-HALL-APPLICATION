@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { BedDouble, CalendarDays, ChevronLeft, ChevronRight, PartyPopper, Plus } from 'lucide-react';
 import { useApi } from '../hooks.js';
-import { HALL_STATUS, ROOM_STATUS, SLOTS, WEEKDAYS, fmtDate, monthGrid, shiftMonth, today } from '../utils.js';
+import { HALL_STATUS, ROOM_STATUS, WEEKDAYS, fmtDate, monthGrid, shiftMonth, slotName, today } from '../utils.js';
 import { Badge, Button, Card, PageLoader, cn } from './ui.jsx';
 
 // Heat levels from quiet (0) to fully booked (5)
@@ -124,7 +124,7 @@ export default function OccupancyCalendar() {
                       <span className="truncate font-semibold">{e.customer_name}</span>
                       <Badge tone={HALL_STATUS[e.status].tone}>{HALL_STATUS[e.status].label}</Badge>
                     </span>
-                    <span className="mt-0.5 block text-xs text-stone-500">{hallName[e.hall_id]} · {SLOTS[e.slot]} · {e.event_type || 'Event'}</span>
+                    <span className="mt-0.5 block text-xs text-stone-500">{hallName[e.hall_id]} · {slotName(e.slot)} · {e.event_type || 'Event'}</span>
                   </span>
                 </button>
               )) : <p className="rounded-xl bg-stone-50 px-3 py-2.5 text-sm text-stone-400">All halls free</p>}

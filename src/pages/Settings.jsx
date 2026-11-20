@@ -1,19 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  ChevronDown,
-  ChevronsUpDown,
-  FoldVertical,
-  KeyRound,
-  Landmark,
-  ListChecks,
-  Lock,
-  Plus,
-  Save,
-  Shield,
-  Trash2,
-  UnfoldVertical,
-  UserRound,
-  Zap,
+  ChevronDown, ChevronsUpDown, Clock, FoldVertical, KeyRound, Landmark, ListChecks, Lock, Plus, Save, Shield, Trash2, UnfoldVertical, UserRound, Zap,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
@@ -190,12 +177,10 @@ export default function Settings() {
     profile: false,
     tariffs: false,
     events: false,
+    timings: false,
     whatsapp: false,
     account: !isAdmin,
   });
-
-  const [testPhone, setTestPhone] = useState('');
-  const [testingWa, setTestingWa] = useState(false);
 
   // Inline Account Edit State for the Account Collapsible Card
   const [accProfile, setAccProfile] = useState({ name: user?.name || '', username: user?.username || '' });
@@ -232,27 +217,10 @@ export default function Settings() {
       profile: nextState,
       tariffs: nextState,
       events: nextState,
+      timings: nextState,
       whatsapp: nextState,
       account: nextState,
     });
-  };
-
-  const handleTestWhatsApp = async () => {
-    if (!testPhone.trim()) return toast('Please enter a mobile number for testing', 'error');
-    setTestingWa(true);
-    try {
-      const res = await api('/whatsapp/test', { method: 'POST', body: { phone: testPhone } });
-      if (res.direct) {
-        window.open(res.wa_link, '_blank');
-        toast('Opened test message in WhatsApp');
-      } else {
-        toast('Test WhatsApp message delivered via Bot API!');
-      }
-    } catch (err) {
-      toast(err.message, 'error');
-    } finally {
-      setTestingWa(false);
-    }
   };
 
   const addGenerator = () => {
@@ -670,13 +638,39 @@ export default function Settings() {
           </div>
         </CollapsibleCard>
 
-        {/* 3. WhatsApp Bot & Customer Messaging */}
+        {/* 3. Check-in and hall timings */}
+        <CollapsibleCard
+          id="timings"
+          icon={Clock}
+          title="Check-in & Hall Timings"
+          subtitle="Shown on booking forms, receipts and WhatsApp messages"
+          badge={`Rooms ${f.room_checkin_time || '11:00 AM'} to ${f.room_checkout_time || '12:00 PM'}`}
+          isOpen={openSections.timings}
+          onToggle={toggleSection}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Room check-in time" hint="e.g. 11:00 AM">
+              <Input value={f.room_checkin_time || ''} onChange={e => set('room_checkin_time', e.target.value)} placeholder="11:00 AM" />
+            </Field>
+            <Field label="Room check-out time" hint="e.g. 12:00 PM">
+              <Input value={f.room_checkout_time || ''} onChange={e => set('room_checkout_time', e.target.value)} placeholder="12:00 PM" />
+            </Field>
+            <Field label="Hall full day timing">
+              <Input value={f.hall_full_time || ''} onChange={e => set('hall_full_time', e.target.value)} placeholder="7:00 AM to 3:00 AM (next day)" />
+            </Field>
+            <Field label="Hall half day timing">
+              <Input value={f.hall_half_time || ''} onChange={e => set('hall_half_time', e.target.value)} placeholder="7:00 AM to 3:00 PM" />
+            </Field>
+          </div>
+        </CollapsibleCard>
+
+        {/* 4. WhatsApp messages */}
         <CollapsibleCard
           id="whatsapp"
           icon={WhatsAppIcon}
-          title="WhatsApp Bot & Customer Messaging"
-          subtitle="Send automated receipts, booking confirmations, check-in, check-out and advance receipts"
-          badge={f.whatsapp_enabled === '1' ? `${f.whatsapp_provider === 'meta' ? 'Meta Cloud API' : f.whatsapp_provider === 'twilio' ? 'Twilio' : 'Direct wa.me'} Active` : 'Disabled'}
+          title="WhatsApp Messages"
+          subtitle="Receipts and booking messages open in WhatsApp with the text ready to send"
+          badge={f.whatsapp_enabled === '1' ? 'On' : 'Off'}
           isOpen={openSections.whatsapp}
           onToggle={toggleSection}
         >
@@ -697,110 +691,10 @@ export default function Settings() {
               </label>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="Messaging Provider Mode" hint="Direct links require no API key or Meta approval">
-                <Select
-                  value={f.whatsapp_provider || 'direct'}
-                  onChange={v => set('whatsapp_provider', v)}
-                  className="font-medium"
-                  options={[
-                    { value: 'direct', label: 'Direct WhatsApp Web/App (wa.me) — Recommended (Free, Instant)' },
-                    { value: 'meta', label: 'Meta WhatsApp Business Cloud API (Automated Background Bot)' },
-                    { value: 'twilio', label: 'Twilio WhatsApp API (Automated Background Bot)' },
-                    { value: 'webhook', label: 'Custom Webhook / UltraMsg / Green API' },
-                  ]}
-                />
-              </Field>
-
-              {f.whatsapp_provider === 'meta' && (
-                <>
-                  <Field label="Meta Phone Number ID" hint="From Meta Developer App Dashboard">
-                    <Input
-                      value={f.whatsapp_phone_number_id || ''}
-                      onChange={e => set('whatsapp_phone_number_id', e.target.value)}
-                      placeholder="e.g. 100609349921234"
-                    />
-                  </Field>
-                  <Field label="Meta System User Access Token" className="sm:col-span-2">
-                    <Input
-                      type="password"
-                      value={f.whatsapp_api_token || ''}
-                      onChange={e => set('whatsapp_api_token', e.target.value)}
-                      placeholder="EAA..."
-                    />
-                  </Field>
-                </>
-              )}
-
-              {f.whatsapp_provider === 'twilio' && (
-                <>
-                  <Field label="Twilio Account SID">
-                    <Input
-                      value={f.whatsapp_twilio_sid || ''}
-                      onChange={e => set('whatsapp_twilio_sid', e.target.value)}
-                      placeholder="AC..."
-                    />
-                  </Field>
-                  <Field label="Twilio From WhatsApp Number" hint="e.g. +14155238886">
-                    <Input
-                      value={f.whatsapp_twilio_from || ''}
-                      onChange={e => set('whatsapp_twilio_from', e.target.value)}
-                      placeholder="+14155238886"
-                    />
-                  </Field>
-                  <Field label="Twilio Auth Token" className="sm:col-span-2">
-                    <Input
-                      type="password"
-                      value={f.whatsapp_twilio_token || ''}
-                      onChange={e => set('whatsapp_twilio_token', e.target.value)}
-                      placeholder="Auth Token"
-                    />
-                  </Field>
-                </>
-              )}
-
-              {f.whatsapp_provider === 'webhook' && (
-                <Field label="Custom Webhook / API URL" className="sm:col-span-2"
-                  hint={f.whatsapp_webhook_url === '••••••••' ? 'Saved and hidden for safety. Type a new address to replace it.' : undefined}>
-                  <Input
-                    value={f.whatsapp_webhook_url || ''}
-                    onChange={e => set('whatsapp_webhook_url', e.target.value)}
-                    placeholder="https://api.ultramsg.com/instance.../messages/chat"
-                  />
-                </Field>
-              )}
-            </div>
-
-            {/* Test WhatsApp Message Sender */}
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-3">
-              <div>
-                <h4 className="font-semibold text-xs uppercase tracking-wider text-emerald-950 flex items-center gap-1.5">
-                  <WhatsAppIcon size={14} className="text-emerald-700" />
-                  Test WhatsApp Message Sender
-                </h4>
-                <p className="text-xs text-stone-500">Send a test message to your mobile number to verify delivery</p>
-              </div>
-
-              <div className="flex gap-2 max-w-md">
-                <Input
-                  type="tel"
-                  placeholder="e.g. 9441117278"
-                  value={testPhone}
-                  onChange={e => setTestPhone(e.target.value)}
-                  className="bg-white"
-                />
-                <Button
-                  type="button"
-                  variant="success"
-                  size="sm"
-                  loading={testingWa}
-                  onClick={handleTestWhatsApp}
-                  className="bg-[#25D366] text-white hover:bg-[#20ba59] shrink-0 font-semibold"
-                >
-                  Send test message
-                </Button>
-              </div>
-            </div>
+            <p className="text-xs text-stone-500">
+              The WhatsApp button on a booking opens WhatsApp on this phone or computer with the customer's number and the
+              ready-made message filled in. Check it and press send. No API or account setup is needed.
+            </p>
           </div>
         </CollapsibleCard>
 

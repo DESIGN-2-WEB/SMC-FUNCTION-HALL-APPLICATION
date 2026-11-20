@@ -292,6 +292,7 @@ export function applyDefaults() {
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
     insertSetting.run(k, String(v));
   }
+  db.prepare(`DELETE FROM settings WHERE key IN (${RETIRED_SETTINGS.map(() => '?').join(', ')})`).run(...RETIRED_SETTINGS);
 }
 
 export const DEFAULT_GENERATORS = [
@@ -396,14 +397,18 @@ export const DEFAULT_SETTINGS = {
   event_types: 'Wedding, Engagement, Half Saree, Birthday, Meetings, Reception, Corporate, Other',
   supply_categories: 'Cooking Vessels, Kitchen Utensils & Accessories, Serving & Tableware, Stoves & Fuel, Furniture & Tents, Containers & Water',
   whatsapp_enabled: '1',
-  whatsapp_provider: 'direct',
-  whatsapp_api_token: '',
-  whatsapp_phone_number_id: '',
-  whatsapp_twilio_sid: '',
-  whatsapp_twilio_token: '',
-  whatsapp_twilio_from: '',
-  whatsapp_webhook_url: '',
+  room_checkin_time: '11:00 AM',
+  room_checkout_time: '12:00 PM',
+  hall_full_time: '7:00 AM to 3:00 AM (next day)',
+  hall_half_time: '7:00 AM to 3:00 PM',
 };
+
+// Settings of the removed WhatsApp API option (Meta, Twilio, webhook). Messages now always
+// open in WhatsApp itself with the text filled in, so these stored keys are cleared.
+const RETIRED_SETTINGS = [
+  'whatsapp_provider', 'whatsapp_api_token', 'whatsapp_phone_number_id', 'whatsapp_twilio_sid',
+  'whatsapp_twilio_token', 'whatsapp_twilio_from', 'whatsapp_webhook_url',
+];
 
 /** First run only: the 3 logins, the property's rooms & halls, and a starter supply list. */
 export function seed() {

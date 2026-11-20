@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
-import { CalendarCheck, CheckCircle2, LogIn, Smartphone } from 'lucide-react';
+import { CalendarCheck, CheckCircle2, LogIn, Smartphone, Zap } from 'lucide-react';
 import { useSave } from '../hooks.js';
 import { useSettings } from '../settings.jsx';
 import {
-  EVENT_TYPES, GENERATOR_OPTIONS, GENERATOR_RATES, METHODS, POWER_UNIT_RATE, SLOTS, addDays, inr, nights, today,
+  EVENT_TYPES, METHODS, SLOTS, addDays, inr, nights, roomTimes, slotName, slotTime, today,
 } from '../utils.js';
 import { Button, Field, Form, Input, Modal, Segmented, Textarea, cn, useUI } from './ui.jsx';
 import { Combobox, DatePicker, Select } from './pickers.jsx';
@@ -92,6 +92,7 @@ function RoomPaymentFields({ f, set, checkIn }) {
 
 export function RoomBookingForm({ booking, rooms, defaultRoomId, defaultDate, onClose, onSaved }) {
   const { toast } = useUI();
+  const { settings } = useSettings();
   const editing = !!booking?.id;
   const [isReservation, setIsReservation] = useState(() => {
     if (editing) return booking.status === 'reserved';
@@ -148,6 +149,7 @@ export function RoomBookingForm({ booking, rooms, defaultRoomId, defaultDate, on
     return next;
   });
 
+  const times = roomTimes(settings);
   const n = nights(f.check_in, f.check_out);
   const discAmount = Number(f.discount) || 0;
   const calcTotal = Math.max(0, n * Number(f.rate || 0) - Math.max(0, discAmount));
@@ -239,8 +241,8 @@ export function RoomBookingForm({ booking, rooms, defaultRoomId, defaultDate, on
         </Field>
         <Field label="Guest name"><Input required value={f.guest_name} onChange={e => set('guest_name', e.target.value)} placeholder="Full name" /></Field>
         <Field label="Phone"><Input type="tel" required value={f.phone} onChange={e => set('phone', e.target.value)} placeholder="Mobile number" /></Field>
-        <Field label="Check-in"><DatePicker required value={f.check_in} onChange={v => set('check_in', v)} /></Field>
-        <Field label="Check-out"><DatePicker required value={f.check_out} min={addDays(f.check_in, 1)} onChange={v => set('check_out', v)} /></Field>
+        <Field label="Check-in" hint={`From ${times.checkIn}`}><DatePicker required value={f.check_in} onChange={v => set('check_in', v)} /></Field>
+        <Field label="Check-out" hint={`By ${times.checkOut}`}><DatePicker required value={f.check_out} min={addDays(f.check_in, 1)} onChange={v => set('check_out', v)} /></Field>
         <Field label="No. of guests"><Input type="number" min="1" required value={f.guests} onChange={e => set('guests', e.target.value)} /></Field>
         <Field label="ID proof" hint="Aadhaar / Driving licence / Passport no.">
           <Input required value={f.id_proof} onChange={e => set('id_proof', e.target.value)} placeholder="Aadhaar / DL / Passport number" />
@@ -465,17 +467,19 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
 
         <Field as="div" label="Time slot" className="sm:col-span-2">
           <Segmented value={f.slot} onChange={v => set('slot', v)} options={Object.entries(SLOTS).map(([value, label]) => ({ value, label }))} />
+          {slotTime(f.slot, settings) && <p className="mt-1.5 text-xs text-stone-500">Hall timing: {slotTime(f.slot, settings)}</p>}
         </Field>
 
         <Field label="Expected guests" hint={hall && Number(f.guests) > hall.capacity ? `Above hall capacity (${hall.capacity})` : undefined}>
           <Input type="number" min="0" value={f.guests} onChange={e => set('guests', e.target.value)} placeholder="e.g. 300" />
         </Field>
 
-        <Field label="Hall Rent (₹)" hint={`${SLOTS[f.slot]} base rent`}>
+        <Field label="Hall Rent (₹)" hint={`${slotName(f.slot)} base rent`}>
           <Input type="number" min="0" value={f.rent} onChange={e => set('rent', e.target.value)} />
         </Field>
 
-        {/* Extra Charges Section */}
+        {/* Power and generator are billed after the event, from the meter reading and hours used */}
+        {editing ? (
         <div className="rounded-2xl border border-stone-200 bg-stone-50/70 p-4 sm:col-span-2 space-y-4">
           <div>
             <h4 className="font-semibold text-ink-900 text-sm">Extra Charges (Not included in rent)</h4>
@@ -525,8 +529,18 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
           </div>
         </div>
 
-        <Field label="Final bill total (₹)" className="sm:col-span-2"
-          hint={autoTotal ? 'Calculated automatically (Rent + Power + Gen)' : 'Custom total entered manually'}>
+        ) : (
+          <div className="flex items-start gap-2.5 rounded-2xl border border-stone-200 bg-stone-50/70 p-3.5 text-xs text-stone-600 sm:col-span-2">
+            <Zap size={16} className="mt-0.5 shrink-0 text-gold-600" />
+            <p>
+              <b className="text-ink-900">Power and generator bills are added after the event.</b> When the event ends, open this booking
+              and press <b>Mark completed</b> to enter the meter reading and generator hours. They are then added to the final bill.
+            </p>
+          </div>
+        )}
+
+        <Field label={editing ? 'Final bill total (₹)' : 'Bill total now (₹)'} className="sm:col-span-2"
+          hint={!autoTotal ? 'Custom total entered manually' : editing ? 'Calculated automatically (Rent + Power + Gen)' : 'Hall rent. Power and generator are added after the event'}>
           <div className="flex gap-2">
             <Input type="number" min="0" className="font-semibold text-lg" value={f.total}
               onChange={e => { setAutoTotal(false); set('total', e.target.value); }} />

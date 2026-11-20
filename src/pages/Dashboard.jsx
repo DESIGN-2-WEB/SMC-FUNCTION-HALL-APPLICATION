@@ -8,7 +8,7 @@ import { useAuth } from '../auth.jsx';
 import OccupancyCalendar from '../components/OccupancyCalendar.jsx';
 import SplitText from '../components/reactbits/SplitText.jsx';
 import { Badge, Button, Card, CardHeader, EmptyState, PageLoader, StatCard, cn } from '../components/ui.jsx';
-import { HALL_STATUS, ROOM_STATE, SLOTS, fmtDate, fmtDateTime, fmtShort, inr, relDay } from '../utils.js';
+import { HALL_STATUS, ROOM_STATE, fmtDate, fmtDateTime, fmtShort, inr, relDay, slotName } from '../utils.js';
 
 export default function Dashboard() {
   const { user, isAdmin } = useAuth();
@@ -117,7 +117,7 @@ export default function Dashboard() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-ink-900">{e.customer_name} <span className="font-normal text-stone-400">· {e.event_type || 'Event'}</span></p>
-                    <p className="truncate text-xs text-stone-500">{e.hall_name} · {SLOTS[e.slot]} · {relDay(e.event_date)}{e.guests ? ` · ${e.guests} guests` : ''}</p>
+                    <p className="truncate text-xs text-stone-500">{e.hall_name} · {slotName(e.slot)} · {relDay(e.event_date)}{e.guests ? ` · ${e.guests} guests` : ''}</p>
                   </div>
                   <div className="hidden text-right sm:block">
                     <Badge tone={HALL_STATUS[e.status].tone}>{HALL_STATUS[e.status].label}</Badge>

@@ -15,7 +15,7 @@ import {
 import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import { Badge, Button, Card, Field, Form, Input, Modal, cn, useUI } from './ui.jsx';
-import { SLOTS, esc, fmtDate, fmtDateTime, inr, nights, today } from '../utils.js';
+import { esc, fmtDate, fmtDateTime, inr, nights, slotName, today } from '../utils.js';
 import { useSettings } from '../settings.jsx';
 import { Select } from './pickers.jsx';
 import { WhatsAppIcon } from './WhatsAppModal.jsx';
@@ -372,7 +372,7 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
   );
 }
 
-const slotLabel = s => SLOTS[s] || (s === 'half' ? 'Half day' : 'Full day');
+const slotLabel = slotName;
 const roomNights = r => Math.max(1, nights(r.check_in, r.check_out));
 
 /** One printable bill for everything in the combo: hall, extras, rooms, supplies, payments. */
