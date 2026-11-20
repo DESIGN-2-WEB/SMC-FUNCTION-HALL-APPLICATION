@@ -1,327 +1,322 @@
-import { esc, fmtDate, fmtDateTime, inr, nights, roomTimes, slotWithTime, today } from '../utils.js';
+import { fmtDate, fmtDateTime, inr, nights, roomTimes, slotName, slotTime, today } from '../utils.js';
 
 /**
- * Normalizes phone numbers to standard international format (defaults to India +91).
+ * WhatsApp messages. Every message has the same layout:
+ *   property name and tagline
+ *   greeting and message in English
+ *   details (booking, dates) and the money: total, paid, balance
+ *   the same message in Telugu
+ *   address and phone
+ * They are opened in WhatsApp with the text filled in (see openWhatsApp); nothing is sent
+ * automatically.
+ */
+
+/**
+ * Normalizes phone numbers to international format (defaults to India +91).
  * e.g. "9441117278", "094411-17278", "+91 94411 17278" -> "919441117278"
  */
 export function cleanPhone(raw, defaultCountry = '91') {
   if (!raw) return '';
   const digits = String(raw).replace(/\D/g, '');
   if (!digits) return '';
-  // If 10 digits (standard Indian mobile), prepend 91
   if (digits.length === 10) return `${defaultCountry}${digits}`;
-  // If 11 digits starting with 0, replace 0 with 91
   if (digits.length === 11 && digits.startsWith('0')) return `${defaultCountry}${digits.slice(1)}`;
-  // Already has country code
   return digits;
 }
 
-/**
- * Builds formatted WhatsApp message for Room Bookings.
- */
-/**
- * Clear "payment due" note added to every message that has money still to collect.
- * `when` says by when it should be paid, e.g. "at check-in" or "before the event".
- */
-function dueNote(balance, when, phone) {
-  if (!(balance > 0)) return '';
-  return `\n⚠️ *PAYMENT DUE: ${inr(balance)}*\nKindly pay the balance of ${inr(balance)} ${when}. For payment details please call ${phone}.\n`;
-}
-
-export function buildRoomMessage(b, settings, type = 'booking') {
-  const propName = settings?.property_name || 'SMC Function Hall & Lodge';
-  const tagline = settings?.property_tagline || 'Kalyana Mandapam & AC Rooms';
-  const address = settings?.address || 'Next to BOI, K.T. Road, Palasa – Kasibugga';
-  const phone = settings?.phone || '94411 17278 / 94410 89616';
-  const n = nights(b.check_in, b.check_out);
-  const t = roomTimes(settings);
-  const balance = Math.max(0, (Number(b.total) || 0) - (Number(b.paid) || 0));
-
-  if (type === 'check_in') {
-    return (
-`🏨 *${propName.toUpperCase()}*
-_${tagline}_
-
-Dear *${b.guest_name}*,
-Welcome! You have successfully *checked in* to *${b.room_name}*.
-
-📌 *Booking ID:* #${b.id}
-🛏 *Room:* ${b.room_name}
-📅 *Check-in:* ${fmtDate(b.check_in)}, ${t.checkIn}
-📅 *Check-out:* ${fmtDate(b.check_out)} by ${t.checkOut} (${n} night${n === 1 ? '' : 's'})
-👥 *Guests:* ${b.guests}
-
-💰 *Room Bill:* ${inr(b.total)}
-💳 *Paid:* ${inr(b.paid)}
-${balance > 0 ? `⏳ *Balance Due:* ${inr(balance)}` : '✨ *Balance Due:* ₹0 (Paid in Full)'}
-${dueNote(balance, 'before check-out', phone)}
-📞 *Front Desk Assistance:* ${phone}
-📍 *Address:* ${address}
-
-Have a wonderful and comfortable stay with us!`
-    );
-  }
-
-  if (type === 'check_out') {
-    return (
-`🏨 *${propName.toUpperCase()}*
-_${tagline}_
-
-Dear *${b.guest_name}*,
-Thank you for staying with us! You have successfully *checked out* of *${b.room_name}*.
-
-📌 *Booking ID:* #${b.id}
-📅 *Stay Duration:* ${fmtDate(b.check_in)} → ${fmtDate(b.check_out)} (${n} night${n === 1 ? '' : 's'})
-${b.checked_out_at ? `🕒 *Checked out at:* ${fmtDateTime(b.checked_out_at)}\n` : ''}💰 *Final Bill Total:* ${inr(b.total)}
-💳 *Total Paid:* ${inr(b.paid)}
-${balance > 0 ? `⚠️ *Pending Balance:* ${inr(balance)}` : '✨ *Settlement:* Fully Paid (₹0 Due)'}
-${dueNote(balance, 'at the earliest', phone)}
-📍 *Address:* ${address}
-📞 *Contact:* ${phone}
-
-We look forward to welcoming you back again soon!`
-    );
-  }
-
-  // Default: Booking confirmation & payment receipt
-  return (
-`🏨 *${propName.toUpperCase()}*
-_${tagline}_
-
-Dear *${b.guest_name}*,
-Your room booking has been *confirmed*!
-
-📌 *Booking Reference:* #${b.id}
-🛏 *Room:* ${b.room_name}
-📅 *Check-in:* ${fmtDate(b.check_in)}, ${t.checkIn}
-📅 *Check-out:* ${fmtDate(b.check_out)} by ${t.checkOut}
-🌙 *Duration:* ${n} night${n === 1 ? '' : 's'}
-👥 *No. of Guests:* ${b.guests}
-${b.discount > 0 ? `🏷 *Discount Applied:* ${inr(b.discount)}\n` : ''}💰 *Total Room Fee:* ${inr(b.total)}
-💳 *Payment Received:* ${inr(b.paid)}
-${balance > 0 ? `⏳ *Balance Due:* ${inr(balance)}` : '✨ *Balance Due:* ₹0 (Paid in Full)'}
-${dueNote(balance, b.status === 'checked_in' ? 'before check-out' : 'at check-in', phone)}
-📍 *Address:* ${address}
-📞 *Helpdesk Contact:* ${phone}
-
-Thank you for choosing ${propName}!`
-  );
-}
-
-/**
- * Builds formatted WhatsApp message for Hall Bookings.
- */
-export function buildHallMessage(b, settings, type = 'booking') {
-  const propName = settings?.property_name || 'SMC Function Hall (A/C)';
-  const bannerName = settings?.banner_name || '';
-  const tagline = settings?.property_tagline || 'Kalyana Mandapam & Function Hall';
-  const address = settings?.address || 'Next to BOI, K.T. Road, Palasa – Kasibugga';
-  const phone = settings?.phone || '94411 17278 / 94410 89616';
-  const balance = Math.max(0, (Number(b.total) || 0) - (Number(b.paid) || 0));
-  const slotName = slotWithTime(b.slot, settings);
-
-  if (type === 'payment' || type === 'completed') {
-    return (
-`🏛 *${propName.toUpperCase()}*
-${bannerName ? `*Proprietor:* ${bannerName}\n` : ''}_${tagline}_
-
-Dear *${b.customer_name}*,
-Here is the settlement receipt for your event on *${fmtDate(b.event_date)}*:
-
-📌 *Booking ID:* #${b.id}
-🏛 *Hall:* ${b.hall_name}
-🎉 *Event:* ${b.event_type || 'Function'}
-📅 *Date & Slot:* ${fmtDate(b.event_date)} (${slotName})
-
-*Bill Breakdown:*
-• Base Hall Rent: ${inr(b.rent || b.total)}
-${b.power_amount > 0 ? `• Power Bill: ${inr(b.power_amount)} (${b.power_units} units @ ₹${b.power_rate || 15}/unit)\n` : ''}${b.generator_amount > 0 ? `• Generator: ${inr(b.generator_amount)} (${b.generator_hours} hrs @ ${inr(b.generator_rate)}/hr)\n` : ''}--------------------------------
-💰 *Final Bill Total:* ${inr(b.total)}
-💳 *Amount Received:* ${inr(b.paid)}
-${balance > 0 ? `⚠️ *Pending Balance Due:* ${inr(balance)}` : '✨ *Settlement Status:* Fully Paid'}
-${dueNote(balance, 'at the earliest', phone)}
-📍 *Venue Address:* ${address}
-📞 *Contact:* ${phone}
-
-Thank you for celebrating with us at ${propName}!`
-    );
-  }
-
-  // Default: Booking confirmation & Advance payment receipt
-  return (
-`🏛 *${propName.toUpperCase()}*
-${bannerName ? `*Proprietor:* ${bannerName}\n` : ''}_${tagline}_
-
-Dear *${b.customer_name}*,
-Your banquet hall booking has been *confirmed*!
-
-📌 *Booking Reference:* #${b.id}
-🏛 *Venue:* ${b.hall_name}
-🎉 *Event Type:* ${b.event_type || 'Function'}
-📅 *Event Date:* ${fmtDate(b.event_date)}
-⏰ *Time Slot:* ${slotName}
-👥 *Expected Guests:* ${b.guests || '—'}
-
-💵 *Base Hall Rent:* ${inr(b.rent || b.total)}
-💳 *Advance Received:* ${inr(b.paid)}
-${balance > 0 ? `⏳ *Pending Rent Due:* ${inr(balance)}` : '✨ *Rent:* Paid in Full'}
-${dueNote(balance, 'before the event', phone)}
-⚡ *Extra Charges Note:*
-Electricity units & Generator hours will be recorded on the event day and added to the final bill.
-
-📍 *Address:* ${address}
-📞 *Contact & Enquiries:* ${phone}
-
-Thank you for booking with ${propName}!`
-  );
-}
-
-/**
- * Builds formatted WhatsApp message for Supply Item Movement / Rental slip.
- */
-export function buildSupplyMessage(item, moveOrRental, settings) {
-  const propName = settings?.property_name || 'SMC Function Hall & Lodge';
-  const phone = settings?.phone || '94411 17278 / 94410 89616';
-
-  if (moveOrRental?.customer_name) {
-    const isReturned = moveOrRental.status === 'returned';
-    return (
-`📦 *${propName.toUpperCase()} - FUNCTION RENTAL VOUCHER*
-
-*Customer / Function:* ${moveOrRental.customer_name}${moveOrRental.event_name ? ` (${moveOrRental.event_name})` : ''}
-*Item:* ${item?.name || moveOrRental.supply_name}
-*Quantity Rented:* ${moveOrRental.quantity} ${item?.unit || moveOrRental.supply_unit || 'pcs'}
-*Rent Rate:* ₹${moveOrRental.rent_rate || 0}/${item?.unit || moveOrRental.supply_unit || 'pcs'} (Total: ₹${moveOrRental.total_rent || 0})
-*Rented Date:* ${fmtDate(moveOrRental.rent_date)}
-*Expected Return:* ${moveOrRental.expected_return_date ? fmtDate(moveOrRental.expected_return_date) : 'After function'}
-*Status:* ${isReturned ? `✅ Returned on ${fmtDate(moveOrRental.return_date)}` : '⏳ Active (With Function)'}
-${moveOrRental.advance_amount > 0 ? `*Advance Paid:* ${inr(moveOrRental.advance_amount)}\n` : ''}${dueNote(Math.max(0, (Number(moveOrRental.total_rent) || 0) - (Number(moveOrRental.advance_amount) || 0)), isReturned ? 'at the earliest' : 'on return', phone)}${moveOrRental.damage_notes ? `*Condition Notes:* ${moveOrRental.damage_notes}\n` : ''}${moveOrRental.notes ? `*Notes:* ${moveOrRental.notes}\n` : ''}
-📞 Contact: ${phone}
-Thank you for choosing ${propName}!`
-    );
-  }
-
-  const isReceive = moveOrRental?.type === 'in';
-  return (
-`📦 *${propName.toUpperCase()} - SUPPLY RECEIPT*
-
-*Item:* ${item?.name || moveOrRental?.supply_name || 'Item'} (${item?.category || moveOrRental?.supply_category || 'General'})
-*Action:* ${isReceive ? 'Stock Received (Inward)' : 'Stock Issued / Delivered (Outward)'}
-*Quantity:* ${Math.abs(moveOrRental?.quantity || 0)} ${item?.unit || moveOrRental?.supply_unit || 'pcs'}
-*Current In-Stock Balance:* ${moveOrRental?.balance ?? item?.quantity} ${item?.unit || moveOrRental?.supply_unit || 'pcs'}
-${moveOrRental?.note ? `*Note / Purpose:* ${moveOrRental.note}\n` : ''}*Date:* ${fmtDateTime(moveOrRental?.created_at || today())}
-
-📞 Contact: ${phone}`
-  );
-}
-
-/**
- * Builds formatted WhatsApp message for Bulk Event Package.
- */
-export function buildPackageMessage(pkg, settings) {
-  const propName = settings?.property_name || 'SMC Function Hall & Lodge';
-  const phone = settings?.phone || '94411 17278 / 94410 89616';
-  const address = settings?.address || 'Next to BOI, K.T. Road, Palasa – Kasibugga';
-
-  const grandTotal = Number(pkg.grand_total ?? pkg.total_amount) || 0;
-  const balance = Math.max(0, Number(pkg.balance ?? grandTotal - (pkg.advance_paid || 0)) || 0);
-
-  let hallSection = '';
-  if (pkg.hall) {
-    hallSection = `\n🏛️ *Banquet Hall:* ${pkg.hall.hall_name} (${slotWithTime(pkg.hall.slot, settings)}) — ${inr(pkg.hall_amount || pkg.hall.rent)}`;
-  }
-
-  let roomsSection = '';
-  if (pkg.rooms && pkg.rooms.length > 0) {
-    roomsSection = `\n\n🛏️ *Reserved Rooms (${pkg.rooms.length} Rooms — Total: ${inr(pkg.rooms_amount)}):*\n` +
-      pkg.rooms.map(r => `• ${r.room_number ? `Room ${r.room_number} (${r.room_name})` : r.room_name} (${fmtDate(r.check_in)} → ${fmtDate(r.check_out)}) — ${inr(r.rate)}`).join('\n');
-  }
-
-  let suppliesSection = '';
-  if (pkg.supplies && pkg.supplies.length > 0) {
-    suppliesSection = `\n\n📦 *Catering & Equipment Rentals (${pkg.supplies.length} items — Total: ${inr(pkg.supplies_amount)}):*\n` +
-      pkg.supplies.map(s => `• ${s.supply_name}: ${s.quantity} ${s.supply_unit || 'pcs'} @ ₹${s.rent_rate} = ${inr(s.total_rent)}`).join('\n');
-  }
-
-  return (
-`🏛️ *${propName.toUpperCase()}*
-🎉 *ALL-IN-ONE EVENT PACKAGE BOOKING*
-
-👤 *Customer:* ${pkg.customer_name}
-📞 *Phone:* ${pkg.phone}
-🎊 *Event:* ${pkg.event_type || 'Function'}
-📅 *Event Date:* ${fmtDate(pkg.event_date)} (${slotWithTime(pkg.slot, settings)})
-${hallSection}${roomsSection}${suppliesSection}
-
-━━━━━━━━━━━━━━━━━━━━
-💵 *PACKAGE BILLING BREAKDOWN:*
-${pkg.hall_amount ? `• Hall Rent: ${inr(pkg.hall_amount)}\n` : ''}${pkg.rooms_amount ? `• Rooms Total: ${inr(pkg.rooms_amount)}\n` : ''}${pkg.supplies_amount ? `• Equipment Rent: ${inr(pkg.supplies_amount)}\n` : ''}${pkg.extras_amount > 0 ? `• Power & Generator: ${inr(pkg.extras_amount)}\n` : ''}⭐ *GRAND TOTAL:* ${inr(grandTotal)}
-💳 *Advance Received:* ${inr(pkg.advance_paid)} (${pkg.payment_method || 'Cash'})
-${balance > 0 ? `⏳ *Balance Due:* ${inr(balance)}` : '✨ *Balance Due:* ₹0 (Paid in Full)'}
-━━━━━━━━━━━━━━━━━━━━
-${dueNote(balance, 'before the event', phone)}
-📍 *Address:* ${address}
-📞 *Contact & Enquiries:* ${phone}
-
-Thank you for choosing ${propName}!`
-  );
-}
-
-/**
- * Builds formatted WhatsApp message for Bulk Catering Equipment Rentals.
- */
-export function buildBulkRentalMessage(order, settings) {
-  const propName = settings?.property_name || 'SMC Function Hall & Lodge';
-  const phone = settings?.phone || '94411 17278 / 94410 89616';
-  const address = settings?.address || 'Next to BOI, K.T. Road, Palasa – Kasibugga';
-
-  const items = order.items || order.rentals || [];
-  const totalRent = Number(order.total_rent || order.total_amount) || 0;
-  const advance = Number(order.advance_amount || order.advance_paid) || 0;
-  const balance = Math.max(0, totalRent - advance);
-
-  const itemsText = items.map((it, idx) => {
-    const name = it.supply_name || it.name;
-    const qty = it.quantity;
-    const unit = it.supply_unit || it.unit || 'pcs';
-    const rate = it.rent_rate;
-    const lineTotal = it.total_rent || (qty * rate);
-    return `${idx + 1}. *${name}*\n   Qty: ${qty} ${unit} @ ₹${rate}/${unit} = ${inr(lineTotal)}`;
-  }).join('\n');
-
-  return (
-`📦 *${propName.toUpperCase()}*
-🥘 *CATERING EQUIPMENT DISPATCH SLIP*
-
-📄 *Order No:* ${order.rental_group_id || 'RNT-DISPATCH'}
-👤 *Customer / In-Charge:* ${order.customer_name}
-📞 *Phone:* ${order.phone || 'N/A'}
-${order.event_name ? `🎊 *Function / Event:* ${order.event_name}\n` : ''}📅 *Dispatch Date:* ${fmtDate(order.rent_date || today())}
-${order.expected_return_date ? `🔄 *Expected Return Date:* ${fmtDate(order.expected_return_date)}\n` : ''}
-━━━━━━━━━━━━━━━━━━━━
-📋 *RENTED EQUIPMENT ITEMS (${items.length} items):*
-${itemsText}
-━━━━━━━━━━━━━━━━━━━━
-💰 *Total Rental Fee:* ${inr(totalRent)}
-💳 *Advance Received:* ${inr(advance)}${order.payment_method ? ` (${order.payment_method})` : ''}
-${balance > 0 ? `⏳ *Balance Due on Return:* ${inr(balance)}` : '✨ *Settlement:* Advance Paid in Full'}
-━━━━━━━━━━━━━━━━━━━━
-${dueNote(balance, 'when the items are returned', phone)}${order.notes ? `📝 *Notes:* ${order.notes}\n` : ''}
-📍 *Address:* ${address}
-📞 *Enquiries / Return Desk:* ${phone}
-
-Thank you for choosing ${propName}!`
-  );
-}
-
-/**
- * Opens WhatsApp Web or WhatsApp Desktop/Mobile app directly.
- */
 export function openWhatsApp(phone, text) {
   const cleaned = cleanPhone(phone);
   const encoded = encodeURIComponent(text);
-  const url = cleaned
-    ? `https://wa.me/${cleaned}?text=${encoded}`
-    : `https://wa.me/?text=${encoded}`;
+  const url = cleaned ? `https://wa.me/${cleaned}?text=${encoded}` : `https://wa.me/?text=${encoded}`;
   window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+const LINE = '━━━━━━━━━━━━━━━━';
+
+// When the balance should be paid, in English and Telugu
+const WHEN = {
+  check_in: ['at check-in', 'చెక్-ఇన్ సమయంలో'],
+  check_out: ['before check-out', 'చెక్-అవుట్ లోపు'],
+  event: ['before the event', 'కార్యక్రమానికి ముందు'],
+  soon: ['at the earliest', 'వీలైనంత త్వరగా'],
+  return: ['when the items are returned', 'సామాగ్రి తిరిగి ఇచ్చేటప్పుడు'],
+};
+
+function property(settings) {
+  return {
+    name: settings?.property_name || 'SMC Function Hall (A/C)',
+    tagline: settings?.property_tagline || 'Kalyana Mandapam & Function Hall',
+    owner: settings?.banner_name || '',
+    address: settings?.address || 'Next to BOI, K.T. Road, Palasa – Kasibugga',
+    phone: settings?.phone || '94411 17278 / 94410 89616',
+  };
+}
+
+// "Full day · 7:00 AM to 3:00 AM (next day)"
+const timing = (slot, settings) => [slotName(slot), slotTime(slot, settings)].filter(Boolean).join(' · ');
+const money = n => Math.max(0, Number(n) || 0);
+const lastPayment = payments => (Array.isArray(payments) && payments.length ? payments[payments.length - 1] : null);
+const bullets = rows => rows.filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `• ${k}: ${v}`).join('\n');
+
+/**
+ * Put a message together. `en` and `te` are the message paragraphs; `details` and `bill` are
+ * [label, value] rows shown once between the two languages.
+ */
+function compose(settings, { icon = '🏛', name, en, te, detailsTitle = 'Booking details', details = [], bill = [] }) {
+  const p = property(settings);
+  const parts = [
+    `${icon} *${p.name.toUpperCase()}*\n_${p.tagline}_${p.owner ? `\nProprietor: ${p.owner}` : ''}`,
+    LINE,
+    `🙏 Namaste *${name}*,`,
+    en.filter(Boolean).join('\n\n'),
+  ];
+  if (details.length) parts.push(`📋 *${detailsTitle}*\n${bullets(details)}`);
+  if (bill.length) parts.push(`💰 *Payment*\n${bullets(bill)}`);
+  parts.push(LINE, `🙏 నమస్కారం *${name}* గారు,`, te.filter(Boolean).join('\n\n'), LINE, `📍 ${p.address}\n📞 ${p.phone}`);
+  return parts.join('\n\n');
+}
+
+/** The money lines and the payment sentences, in both languages. */
+function paymentStatus({ total, paid, when }) {
+  const balance = money(total - paid);
+  const [whenEn, whenTe] = WHEN[when] || WHEN.soon;
+  return {
+    balance,
+    bill: [
+      ['Total', inr(total)],
+      ['Paid', inr(paid)],
+      ['Balance due', balance > 0 ? inr(balance) : '₹0 (fully paid ✅)'],
+    ],
+    en: balance > 0
+      ? `⚠️ *Payment due: ${inr(balance)}*\nKindly pay the balance ${whenEn}.`
+      : '✅ Your payment is fully completed. Thank you!',
+    te: balance > 0
+      ? `⚠️ *చెల్లించవలసిన బకాయి: ${inr(balance)}*\nదయచేసి మిగిలిన మొత్తాన్ని ${whenTe} చెల్లించండి.`
+      : '✅ మీ చెల్లింపు పూర్తిగా అయిపోయింది. ధన్యవాదాలు!',
+  };
+}
+
+/** "Payment received" sentences for the latest payment, or full-payment thanks when nothing is due. */
+function paymentReceived(payments, balance) {
+  const last = lastPayment(payments);
+  if (!last) return { en: 'We have not received a payment for this booking yet.', te: 'ఈ బుకింగ్‌కు ఇంకా ఎలాంటి చెల్లింపు అందలేదు.' };
+  const how = `${inr(last.amount)} (${last.method || 'Cash'}, ${fmtDate(last.paid_on)})`;
+  return balance > 0
+    ? { en: `💳 We have received your payment of *${how}*. Thank you!`, te: `💳 మీ చెల్లింపు *${how}* అందింది. ధన్యవాదాలు!` }
+    : {
+        en: `🎉 We have received your payment of *${how}*.\nYou have successfully completed the full payment. Thank you!`,
+        te: `🎉 మీ చెల్లింపు *${how}* అందింది.\nమీరు పూర్తి చెల్లింపును విజయవంతంగా పూర్తి చేశారు. ధన్యవాదాలు!`,
+      };
+}
+
+/**
+ * Room booking messages.
+ * type: 'booking' (greeting / confirmation, or welcome once checked in), 'payment', 'check_out' (thank you)
+ */
+export function buildRoomMessage(b, settings, type = 'booking') {
+  const n = nights(b.check_in, b.check_out);
+  const t = roomTimes(settings);
+  const checkedIn = b.status === 'checked_in';
+  const when = type === 'check_out' ? 'soon' : checkedIn ? 'check_out' : 'check_in';
+  const status = paymentStatus({ total: Number(b.total) || 0, paid: Number(b.paid) || 0, when });
+  const details = [
+    ['Booking', `#${b.id}`],
+    ['Room', b.room_name],
+    ['Check-in', `${fmtDate(b.check_in)}, ${t.checkIn}`],
+    ['Check-out', `${fmtDate(b.check_out)}, ${t.checkOut} (${n} night${n === 1 ? '' : 's'})`],
+    ['Guests', b.guests],
+    ...(b.checked_out_at ? [['Checked out at', fmtDateTime(b.checked_out_at)]] : []),
+  ];
+
+  if (type === 'payment') {
+    const got = paymentReceived(b.payments, status.balance);
+    return compose(settings, {
+      icon: '🏨', name: b.guest_name, details, bill: status.bill,
+      en: [got.en, status.balance > 0 && status.en],
+      te: [got.te, status.balance > 0 && status.te],
+    });
+  }
+
+  if (type === 'check_out') {
+    return compose(settings, {
+      icon: '🏨', name: b.guest_name, detailsTitle: 'Stay details', details, bill: status.bill,
+      en: ['Thank you for staying with us! We hope you had a comfortable stay. Please visit us again. 🙏', status.en],
+      te: ['మా వద్ద బస చేసినందుకు ధన్యవాదాలు! మీ బస సౌకర్యంగా గడిచిందని ఆశిస్తున్నాము. దయచేసి మళ్ళీ రండి. 🙏', status.te],
+    });
+  }
+
+  return compose(settings, {
+    icon: '🏨', name: b.guest_name, details, bill: status.bill,
+    en: [
+      checkedIn
+        ? `Welcome! You have checked in to *${b.room_name}*. We wish you a comfortable stay.`
+        : `Thank you for booking with us. Your room booking is *confirmed*.\nCheck-in is from ${t.checkIn} and check-out by ${t.checkOut}.`,
+      status.en,
+    ],
+    te: [
+      checkedIn
+        ? `స్వాగతం! మీరు *${b.room_name}* లో చెక్-ఇన్ అయ్యారు. మీ బస సౌకర్యంగా ఉండాలని కోరుకుంటున్నాము.`
+        : `మాతో బుక్ చేసినందుకు ధన్యవాదాలు. మీ గది బుకింగ్ *నిర్ధారించబడింది*.\nచెక్-ఇన్ ${t.checkIn} నుండి, చెక్-అవుట్ ${t.checkOut} లోపు.`,
+      status.te,
+    ],
+  });
+}
+
+/**
+ * Hall booking messages.
+ * type: 'booking' (greeting / confirmation), 'payment', 'completed' (thank you after the event)
+ */
+export function buildHallMessage(b, settings, type = 'booking') {
+  const event = b.event_type || 'function';
+  const status = paymentStatus({ total: Number(b.total) || 0, paid: Number(b.paid) || 0, when: type === 'completed' ? 'soon' : 'event' });
+  const details = [
+    ['Booking', `#${b.id}`],
+    ['Hall', b.hall_name],
+    ['Event', b.event_type || 'Function'],
+    ['Date', fmtDate(b.event_date)],
+    ['Timing', timing(b.slot, settings)],
+    ...(b.guests ? [['Guests', b.guests]] : []),
+  ];
+  const bill = [
+    // the rent line only when power or generator were added on top of it
+    ...(Number(b.power_amount) > 0 || Number(b.generator_amount) > 0 ? [['Hall rent', inr(b.rent || b.total)]] : []),
+    ...(Number(b.power_amount) > 0 ? [['Power', `${inr(b.power_amount)} (${b.power_units} units × ₹${b.power_rate || 15})`]] : []),
+    ...(Number(b.generator_amount) > 0 ? [['Generator', `${inr(b.generator_amount)} (${b.generator_hours} hrs × ${inr(b.generator_rate)})`]] : []),
+    ...status.bill,
+  ];
+
+  if (type === 'payment') {
+    const got = paymentReceived(b.payments, status.balance);
+    return compose(settings, {
+      name: b.customer_name, details, bill,
+      en: [got.en, status.balance > 0 && status.en],
+      te: [got.te, status.balance > 0 && status.te],
+    });
+  }
+
+  if (type === 'completed') {
+    return compose(settings, {
+      name: b.customer_name, detailsTitle: 'Event details', details, bill,
+      en: [`Thank you for celebrating your ${event} with us! It was our pleasure to host you and your guests. 🙏`, status.en],
+      te: ['మీ వేడుకను మాతో జరుపుకున్నందుకు ధన్యవాదాలు! మీకు మరియు మీ అతిథులకు ఆతిథ్యం ఇవ్వడం మాకు ఎంతో సంతోషం. 🙏', status.te],
+    });
+  }
+
+  return compose(settings, {
+    name: b.customer_name, details, bill,
+    en: [
+      `Thank you for choosing us for your ${event}. Your hall booking is *confirmed*. 🎉`,
+      status.en,
+      '⚡ Power and generator charges are added to the bill after the event.',
+    ],
+    te: [
+      'మీ వేడుక కోసం మమ్మల్ని ఎంచుకున్నందుకు ధన్యవాదాలు. మీ హాల్ బుకింగ్ *నిర్ధారించబడింది*. 🎉',
+      status.te,
+      '⚡ విద్యుత్ మరియు జనరేటర్ ఛార్జీలు కార్యక్రమం తర్వాత బిల్లులో చేర్చబడతాయి.',
+    ],
+  });
+}
+
+/**
+ * Combo (hall + rooms + supplies on one bill).
+ * type: 'booking' (greeting / confirmation) or 'payment'
+ */
+export function buildPackageMessage(pkg, settings, type = 'booking') {
+  const total = Number(pkg.grand_total ?? pkg.total_amount) || 0;
+  const balance = money(pkg.balance ?? total - (Number(pkg.advance_paid) || 0));
+  const status = paymentStatus({ total, paid: total - balance, when: 'event' });
+  const details = [
+    ['Combo', `#${pkg.id}`],
+    ['Event', pkg.event_type || 'Function'],
+    ['Date', `${fmtDate(pkg.event_date)} (${timing(pkg.slot, settings)})`],
+    ...(pkg.hall ? [['Hall', `${pkg.hall.hall_name} — ${inr(pkg.hall_amount || pkg.hall.rent)}`]] : []),
+    ...(pkg.rooms?.length ? [['Rooms', `${pkg.rooms.map(r => r.room_name).join(', ')} — ${inr(pkg.rooms_amount)}`]] : []),
+    ...(pkg.supplies?.length ? [['Supplies', `${pkg.supplies.length} item${pkg.supplies.length > 1 ? 's' : ''} — ${inr(pkg.supplies_amount)}`]] : []),
+  ];
+  const bill = [
+    ...(Number(pkg.extras_amount) > 0 ? [['Power & generator', inr(pkg.extras_amount)]] : []),
+    ...status.bill,
+  ];
+
+  if (type === 'payment') {
+    const got = paymentReceived(pkg.payments, status.balance);
+    return compose(settings, {
+      name: pkg.customer_name, detailsTitle: 'Combo details', details, bill,
+      en: [got.en, status.balance > 0 && status.en],
+      te: [got.te, status.balance > 0 && status.te],
+    });
+  }
+
+  return compose(settings, {
+    name: pkg.customer_name, detailsTitle: 'Combo details', details, bill,
+    en: [`Thank you for choosing us for your ${pkg.event_type || 'function'}. Your combo booking (hall, rooms and supplies on one bill) is *confirmed*. 🎉`, status.en],
+    te: ['మీ వేడుక కోసం మమ్మల్ని ఎంచుకున్నందుకు ధన్యవాదాలు. మీ కాంబో బుకింగ్ (హాల్, గదులు మరియు సామాగ్రి ఒకే బిల్లులో) *నిర్ధారించబడింది*. 🎉', status.te],
+  });
+}
+
+/** A single supply rented to a customer, or (without a customer) a stock in/out slip. */
+export function buildSupplyMessage(item, move, settings) {
+  const unit = item?.unit || move?.supply_unit || 'pcs';
+  const name = item?.name || move?.supply_name || 'Item';
+
+  if (move?.customer_name) {
+    const returned = move.status === 'returned';
+    const total = Number(move.total_rent) || 0;
+    const status = paymentStatus({ total, paid: Math.min(total, Number(move.advance_amount) || 0), when: returned ? 'soon' : 'return' });
+    return compose(settings, {
+      icon: '📦', name: move.customer_name, detailsTitle: 'Rental details',
+      details: [
+        ['Item', `${name} × ${move.quantity} ${unit}`],
+        ['Rate', `₹${move.rent_rate || 0} per ${unit}`],
+        ['Rented on', fmtDate(move.rent_date)],
+        ['Return', returned ? `Returned on ${fmtDate(move.return_date)} ✅` : move.expected_return_date ? fmtDate(move.expected_return_date) : 'After the function'],
+        ...(move.damage_notes ? [['Condition', move.damage_notes]] : []),
+      ],
+      bill: status.bill,
+      en: [returned ? 'Thank you for returning the items. 🙏' : 'Here are the details of the items you have rented from us.', status.en],
+      te: [returned ? 'సామాగ్రిని తిరిగి ఇచ్చినందుకు ధన్యవాదాలు. 🙏' : 'మా వద్ద నుండి మీరు అద్దెకు తీసుకున్న సామాగ్రి వివరాలు ఇవి.', status.te],
+    });
+  }
+
+  // Stock slip for the team (no customer): English only, same header
+  const p = property(settings);
+  const isIn = move?.type === 'in';
+  return [
+    `📦 *${p.name.toUpperCase()}*`,
+    `*Stock ${isIn ? 'received' : 'issued'}*`,
+    LINE,
+    bullets([
+      ['Item', `${name} (${item?.category || move?.supply_category || 'General'})`],
+      ['Quantity', `${Math.abs(move?.quantity || 0)} ${unit}`],
+      ['In stock now', `${move?.balance ?? item?.quantity} ${unit}`],
+      ['Note', move?.note],
+      ['Date', fmtDateTime(move?.created_at || today())],
+    ]),
+    LINE,
+    `📞 ${p.phone}`,
+  ].join('\n\n');
+}
+
+/** Several supplies rented together on one dispatch slip. */
+export function buildBulkRentalMessage(order, settings) {
+  const items = order.items || order.rentals || [];
+  const total = Number(order.total_rent || order.total_amount) || 0;
+  const advance = Number(order.advance_amount || order.advance_paid) || 0;
+  const status = paymentStatus({ total, paid: Math.min(total, advance), when: 'return' });
+  const list = items.map((it, i) => {
+    const unit = it.supply_unit || it.unit || 'pcs';
+    return `${i + 1}. ${it.supply_name || it.name} — ${it.quantity} ${unit} × ₹${it.rent_rate} = ${inr(it.total_rent || it.quantity * it.rent_rate)}`;
+  }).join('\n');
+  return compose(settings, {
+    icon: '📦', name: order.customer_name, detailsTitle: `Items rented (${items.length})`,
+    details: [
+      ['Order', order.rental_group_id || '—'],
+      ...(order.event_name ? [['Function', order.event_name]] : []),
+      ['Dispatched on', fmtDate(order.rent_date || today())],
+      ...(order.expected_return_date ? [['Return by', fmtDate(order.expected_return_date)]] : []),
+    ],
+    bill: status.bill,
+    en: [`Here are the catering items sent for your function:\n${list}`, status.en],
+    te: ['మీ వేడుక కోసం పంపిన సామాగ్రి వివరాలు పైన ఇవ్వబడ్డాయి.', status.te],
+  });
 }

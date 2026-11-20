@@ -12,7 +12,7 @@ import PackageDetailModal from '../components/PackageDetailModal.jsx';
 import ComboTable from '../components/ComboTable.jsx';
 import WhatsAppModal from '../components/WhatsAppModal.jsx';
 import {
-  Badge, Button, Card, EmptyState, Field, Form, Input, Modal, PageHeader, PageLoader, Segmented, Textarea, cn, useUI,
+  Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, PageLoader, Segmented, Textarea, cn, useUI,
 } from '../components/ui.jsx';
 import { HALL_STATUS, fmtDate, inr, relDay, slotName, slotTime, today } from '../utils.js';
 import { useRowsReveal } from '../motion.js';

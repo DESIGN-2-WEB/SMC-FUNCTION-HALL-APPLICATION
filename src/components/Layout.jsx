@@ -1,13 +1,12 @@
 import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
-  BedDouble, ChevronLeft, ChevronRight, History, KeyRound, LayoutDashboard, Layers, LogOut, Menu, Package, PartyPopper, SlidersHorizontal, UserRound, Users, Wallet, X,
+  BedDouble, ChevronLeft, ChevronRight, LayoutDashboard, Layers, LogOut, Menu, Package, PartyPopper, SlidersHorizontal, Users, Wallet, X,
 } from 'lucide-react';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
-import { initials } from '../utils.js';
-import { api } from '../api.js';
-import { Avatar, Badge, Button, Field, Form, Input, Modal, PageLoader, cn, useUI } from './ui.jsx';
+
+import { Avatar, Badge, Button, PageLoader, cn } from './ui.jsx';
 import AccountModal from './AccountModal.jsx';
 import ClickSpark from './reactbits/ClickSpark.jsx';
 import { usePageEnter, useStaggerIn } from '../motion.js';

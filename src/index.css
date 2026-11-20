@@ -52,7 +52,8 @@ body {
 
 @layer components {
   .card {
-    @apply rounded-2xl border border-stone-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,.04),0_8px_24px_-12px_rgba(16,24,40,.08)];
+    /* min-w-0: cards sit in grids; without it a long cut-off ("…") line widens the card past a phone screen */
+    @apply min-w-0 rounded-2xl border border-stone-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,.04),0_8px_24px_-12px_rgba(16,24,40,.08)];
   }
   .input {
     @apply w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 outline-none transition placeholder:text-stone-400 focus:border-gold-400 focus:ring-4 focus:ring-gold-100;

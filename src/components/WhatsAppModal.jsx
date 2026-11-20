@@ -22,25 +22,33 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, o
   const isBulkRental = kind === 'bulk_rental';
 
   // Templates options based on booking kind
+  // Greeting (booking confirmed / welcome), Payment (received, due or fully paid), Thank you
   const templates = isRoom
     ? [
-        { value: 'booking', label: 'Booking & Payment' },
-        { value: 'check_in', label: 'Check-in Welcome' },
-        { value: 'check_out', label: 'Check-out Statement' },
+        { value: 'booking', label: 'Greeting' },
+        { value: 'payment', label: 'Payment' },
+        { value: 'check_out', label: 'Thank you' },
       ]
     : isHall
     ? [
-        { value: 'booking', label: 'Booking Confirmation' },
-        { value: 'payment', label: 'Payment Receipt' },
-        { value: 'completed', label: 'Final Settlement' },
+        { value: 'booking', label: 'Greeting' },
+        { value: 'payment', label: 'Payment' },
+        { value: 'completed', label: 'Thank you' },
       ]
     : isPackage
-    ? [{ value: 'booking', label: 'Event Package Voucher' }]
+    ? [
+        { value: 'booking', label: 'Greeting' },
+        { value: 'payment', label: 'Payment' },
+      ]
     : isBulkRental
-    ? [{ value: 'rental', label: 'Catering Dispatch Slip' }]
-    : [{ value: 'supply', label: 'Supply Receipt' }];
+    ? [{ value: 'rental', label: 'Dispatch slip' }]
+    : [{ value: 'supply', label: 'Supply receipt' }];
 
-  const [template, setTemplate] = useState('booking');
+  // Open on the message that fits where the booking is: thanks once it is over
+  const [template, setTemplate] = useState(() =>
+    isRoom && booking?.status === 'checked_out' ? 'check_out'
+      : isHall && booking?.status === 'completed' ? 'completed'
+        : 'booking');
   const [phone, setPhone] = useState(() => (isSupply ? '' : booking?.phone || ''));
   const [copied, setCopied] = useState(false);
 
@@ -48,7 +56,7 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, o
   const text = isBulkRental
     ? buildBulkRentalMessage(booking, settings)
     : isPackage
-    ? buildPackageMessage(booking, settings)
+    ? buildPackageMessage(booking, settings, template)
     : isRoom
     ? buildRoomMessage(booking, settings, template)
     : isHall

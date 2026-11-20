@@ -1,10 +1,8 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { CalendarCheck, CheckCircle2, LogIn, Plus, Smartphone, Trash2, Zap } from 'lucide-react';
 import { useSave } from '../hooks.js';
 import { useSettings } from '../settings.jsx';
-import {
-  EVENT_TYPES, METHODS, SLOTS, addDays, inr, nights, roomTimes, slotName, slotTime, today,
-} from '../utils.js';
+import { EVENT_TYPES, METHODS, SLOTS, addDays, inr, nights, roomTimes, slotName, slotTime, today } from '../utils.js';
 import { Button, Field, Form, Input, Modal, Segmented, Textarea, cn, useUI } from './ui.jsx';
 import { Combobox, DatePicker, Select } from './pickers.jsx';
 

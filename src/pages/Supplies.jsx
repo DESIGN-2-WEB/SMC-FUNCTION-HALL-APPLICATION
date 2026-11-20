@@ -1,48 +1,13 @@
 import { useMemo, useState } from 'react';
 import {
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  Boxes,
-  Calendar,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Clock,
-  Handshake,
-  History,
-  Layers,
-  Package,
-  Pencil,
-  Plus,
-  RotateCcw,
-  Search,
-  ShoppingBag,
-  SlidersHorizontal,
-  Sparkles,
-  Trash2,
-  TriangleAlert,
-  Wallet,
-  X,
+  ArrowDownToLine, ArrowUpFromLine, Boxes, CheckCircle2, ChevronDown, ChevronUp, Handshake, History, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Sparkles, Trash2, Wallet, X,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi, useRemove, useSave } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
 import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Field,
-  Form,
-  Input,
-  Modal,
-  PageHeader,
-  PageLoader,
-  Segmented,
-  StatCard,
-  cn,
-  useUI,
+  Badge, Button, Card, EmptyState, Field, Form, Input, Modal, PageHeader, PageLoader, Segmented, StatCard, cn, useUI,
 } from '../components/ui.jsx';
 import { Combobox, Select } from '../components/pickers.jsx';
 import { addDays, fmtDate, fmtDateTime, inr, today } from '../utils.js';
@@ -231,7 +196,7 @@ export default function Supplies() {
         title="Function Supplies & Equipment Rentals"
         subtitle="Rent out banquet chairs, tables, utensils, sound & stage equipment to functions and track returns"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="gold"
               icon={Handshake}

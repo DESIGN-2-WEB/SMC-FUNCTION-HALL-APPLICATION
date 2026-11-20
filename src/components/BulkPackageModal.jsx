@@ -1,41 +1,10 @@
-import { useMemo, useState } from 'react';
-import {
-  BedDouble,
-  Boxes,
-  Calendar,
-  Check,
-  CheckCircle2,
-  ChevronRight,
-  Handshake,
-  Landmark,
-  Layers,
-  PartyPopper,
-  Plus,
-  Search,
-  Sparkles,
-  Trash2,
-  Users as UsersIcon,
-  X,
-  Zap,
-} from 'lucide-react';
+import { useState } from 'react';
+import { BedDouble, Boxes, Check, Landmark, PartyPopper, Search, Sparkles, Zap } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import { useSettings } from '../settings.jsx';
-import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Field,
-  Form,
-  Input,
-  Modal,
-  Segmented,
-  Textarea,
-  cn,
-  useUI,
-} from './ui.jsx';
-import { SLOTS, addDays, fmtDate, inr, nights, slotName, today } from '../utils.js';
+import { Button, Card, Field, Form, Input, Modal, Segmented, cn, useUI } from './ui.jsx';
+import { SLOTS, addDays, inr, nights, slotName, today } from '../utils.js';
 import { Select } from './pickers.jsx';
 
 export default function BulkPackageModal({ onClose, onSaved }) {

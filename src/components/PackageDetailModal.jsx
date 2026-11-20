@@ -1,17 +1,5 @@
 import { useState } from 'react';
-import {
-  BedDouble,
-  Boxes,
-  Check,
-  CreditCard,
-  Landmark,
-  MessageCircle,
-  Printer,
-  RotateCcw,
-  Sparkles,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { BedDouble, Boxes, CreditCard, Landmark, Printer } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import { Badge, Button, Card, Field, Form, Input, Modal, cn, useUI } from './ui.jsx';

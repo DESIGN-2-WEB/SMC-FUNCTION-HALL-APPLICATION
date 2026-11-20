@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
-  ChevronDown, ChevronsUpDown, Clock, DatabaseBackup, FoldVertical, KeyRound, Landmark, ListChecks, Lock, Plus, Save, Shield, Trash2, UnfoldVertical, UserRound, Zap,
+  ChevronDown, Clock, DatabaseBackup, FoldVertical, KeyRound, Landmark, ListChecks, Lock, Plus, Save, Trash2, UnfoldVertical, UserRound, Zap,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
-import { Button, Card, Field, Form, Input, PageHeader, Textarea, cn, useUI } from '../components/ui.jsx';
-import { Select } from '../components/pickers.jsx';
+import { Button, Card, Field, Form, Input, PageHeader, cn, useUI } from '../components/ui.jsx';
+
 import AccountModal from '../components/AccountModal.jsx';
 import BackupRestore from '../components/BackupRestore.jsx';
 import { WhatsAppIcon } from '../components/WhatsAppModal.jsx';

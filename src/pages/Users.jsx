@@ -1,43 +1,14 @@
 import { useMemo, useState } from 'react';
 import {
-  Clock,
-  History,
-  KeyRound,
-  LogIn,
-  LogOut,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-  Smartphone,
-  Trash2,
-  UserCheck,
-  UserRound,
-  Users as UsersIcon,
-  Wifi,
+  Clock, History, KeyRound, LogIn, LogOut, Pencil, Plus, RefreshCw, Search, ShieldCheck, Trash2, UserCheck, UserRound, Users as UsersIcon, Wifi,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi, useRemove, useSave } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import {
-  Avatar,
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Field,
-  Form,
-  Input,
-  Modal,
-  PageHeader,
-  PageLoader,
-  Segmented,
-  StatCard,
-  cn,
-  useUI,
+  Avatar, Badge, Button, Card, EmptyState, Field, Form, Input, Modal, PageHeader, PageLoader, Segmented, StatCard, cn, useUI,
 } from '../components/ui.jsx';
-import { fmtDateTime, fmtDurationWords, fmtTime, relDay } from '../utils.js';
+import { fmtDateTime, fmtDurationWords, relDay } from '../utils.js';
 import { Select } from '../components/pickers.jsx';
 
 export default function Users() {

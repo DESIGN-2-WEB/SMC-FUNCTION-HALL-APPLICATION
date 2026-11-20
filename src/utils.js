@@ -84,19 +84,6 @@ export const ROOM_STATE = {
   maintenance: { label: 'Maintenance', tone: 'amber' },
 };
 
-export const GENERATOR_RATES = {
-  '120 kVA': 1500,
-  '30 kVA': 450,
-};
-
-export const GENERATOR_OPTIONS = [
-  { value: '', label: 'None' },
-  { value: '120 kVA', label: '120 kVA (₹1,500/hr)' },
-  { value: '30 kVA', label: '30 kVA (₹450/hr)' },
-];
-
-export const POWER_UNIT_RATE = 15;
-
 // A hall is booked for a full day or a half day. Morning/evening are only for older bookings.
 export const SLOTS = { full: 'Full day', half: 'Half day' };
 const OLD_SLOTS = { morning: 'Morning', evening: 'Evening' };

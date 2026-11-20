@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Check, KeyRound, Lock, Shield, UserRound } from 'lucide-react';
+import { Check, KeyRound, Lock, UserRound } from 'lucide-react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
-import { Badge, Button, Field, Form, Input, Modal, cn, useUI } from './ui.jsx';
+import { Badge, Button, Field, Form, Input, Modal, useUI } from './ui.jsx';
 
 export default function AccountModal({ onClose }) {
   const { user, updateUser } = useAuth();

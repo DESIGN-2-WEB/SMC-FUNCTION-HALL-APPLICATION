@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { all, get, log, run, today, tx } from '../db.js';
 import { fail, found, isDate, num, str } from '../lib/http.js';
-import { requireAdmin } from '../middleware/auth.js';
 
 const r = Router();
 export default r;
