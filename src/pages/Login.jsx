@@ -6,7 +6,6 @@ import { useSettings } from '../settings.jsx';
 import { Brand } from '../components/Layout.jsx';
 import { Button, Form } from '../components/ui.jsx';
 import { Select } from '../components/pickers.jsx';
-import VantaBackground from '../components/VantaBackground.jsx';
 import SplitText from '../components/reactbits/SplitText.jsx';
 import { gsap, reducedMotion, useGSAP } from '../motion.js';
 
@@ -61,7 +60,6 @@ export default function Login() {
     <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
       {/* Showcase panel */}
       <div ref={panelRef} className="relative hidden overflow-hidden bg-ink-900 lg:flex lg:flex-col lg:justify-between lg:p-14">
-        <VantaBackground className="absolute inset-0 opacity-60" />
         {/* Slow turn in opposite directions; still for people who turn off motion in their device settings */}
         <div className="pointer-events-none absolute -right-40 -bottom-40 h-[640px] w-[640px] motion-safe:animate-orbit">
           <Mandala className="h-full w-full text-gold-400/15" />

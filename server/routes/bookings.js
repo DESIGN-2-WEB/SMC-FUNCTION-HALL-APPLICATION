@@ -267,6 +267,32 @@ function bookingRouter(kind) {
     res.status(201).json(load(b.id));
   });
 
+  // Extend a current or upcoming room stay: push the check-out date later and add the extra
+  // nights to the bill. Works for combo rooms too, whose combined bill grows by the same amount.
+  if (kind === 'room') r.post('/:id/extend', (req, res) => {
+    const b = load(req.params.id);
+    if (!K.active.includes(b.status)) fail('Only a reserved or checked-in stay can be extended');
+    const checkOut = str(req.body.check_out);
+    if (!isDate(checkOut)) fail('Choose the new check-out date');
+    if (checkOut <= b.check_out) fail('The new check-out must be after the current one');
+    const rate = req.body.rate === undefined || req.body.rate === '' ? b.rate : num(req.body.rate, -1);
+    if (rate < 0) fail('Enter a valid rate per night');
+    const extraNights = Math.round((Date.parse(checkOut) - Date.parse(b.check_out)) / 86400000);
+    const extra = Math.round(extraNights * rate);
+    const clash = K.conflict({ room_id: b.room_id, check_in: b.check_out, check_out: checkOut }, b.id);
+    if (clash) fail(clash, 409);
+    tx(() => {
+      run('UPDATE room_bookings SET check_out = ?, total = total + ? WHERE id = ?', checkOut, extra, b.id);
+      if (b.package_id) {
+        run('UPDATE packages SET rooms_amount = rooms_amount + ?, total_amount = total_amount + ? WHERE id = ?',
+          extra, extra, b.package_id);
+      }
+    });
+    log(req.user.id, 'room booking extended',
+      `${b.guest_name} · ${b.check_out} → ${checkOut} · +${extraNights} night${extraNights === 1 ? '' : 's'} · +${inr(extra)}`);
+    res.json(load(b.id));
+  });
+
   r.delete('/:id', requireAdmin, (req, res) => {
     const b = load(req.params.id);
     tx(() => {

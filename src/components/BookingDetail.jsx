@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import {
-  Ban, CalendarCheck, CircleCheck, IndianRupee, LogIn, LogOut, Pencil, Printer, Smartphone, Trash2,
+  Ban, CalendarCheck, CalendarPlus, CircleCheck, IndianRupee, LogIn, LogOut, Pencil, Printer, Smartphone, Trash2,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi, useRemove } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
 import {
-  HALL_STATUS, METHODS, ROOM_STATUS, SLOTS, esc, fmtDate, fmtDateTime, inr, nights, today,
+  HALL_STATUS, METHODS, ROOM_STATUS, SLOTS, addDays, esc, fmtDate, fmtDateTime, inr, nights, today,
 } from '../utils.js';
-import { Badge, Button, Form, Input, Modal, PageLoader, cn, useUI } from './ui.jsx';
-import { Select } from './pickers.jsx';
+import { Badge, Button, Field, Form, Input, Modal, PageLoader, cn, useUI } from './ui.jsx';
+import { DatePicker, Select } from './pickers.jsx';
 import WhatsAppModal, { WhatsAppIcon } from './WhatsAppModal.jsx';
 
 export default function BookingDetail({ kind, id, onClose, onChanged, onEdit }) {
@@ -21,6 +21,7 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit }) 
   const [pay, setPay] = useState({ amount: '', method: 'Cash', note: '' });
   const [busy, setBusy] = useState(false);
   const [waOpen, setWaOpen] = useState(false);
+  const [extending, setExtending] = useState(false);
 
   const run = async (fn, msg) => {
     setBusy(true);
@@ -89,6 +90,8 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit }) 
   if (isRoom && b.status === 'checked_in')
     actions.push(<Button key="out" icon={LogOut} disabled={busy}
       onClick={() => setStatus('checked_out', 'Guest checked out', balance > 0 && { title: 'Balance pending', message: `${inr(balance)} is still due from ${b.guest_name}. Check out anyway?`, confirmText: 'Check out' })}>Check out</Button>);
+  if (isRoom && (b.status === 'reserved' || b.status === 'checked_in'))
+    actions.unshift(<Button key="ext" variant="outline" icon={CalendarPlus} disabled={busy} onClick={() => setExtending(true)}>Extend stay</Button>);
   if (!isRoom && b.status === 'tentative')
     actions.push(<Button key="conf" variant="success" icon={CalendarCheck} disabled={busy} onClick={() => setStatus('confirmed', 'Booking confirmed')}>Confirm</Button>);
   if (!isRoom && b.status === 'confirmed')
@@ -130,6 +133,13 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit }) 
       }
     >
       {waOpen && <WhatsAppModal kind={kind} booking={b} onClose={() => setWaOpen(false)} />}
+      {extending && (
+        <ExtendStayModal
+          booking={b}
+          onClose={() => setExtending(false)}
+          onDone={async () => { setExtending(false); await reload(); onChanged?.(); }}
+        />
+      )}
       <div className="grid grid-cols-3 gap-3">
         {[
           ['Total', inr(b.total), 'text-ink-900'],
@@ -214,6 +224,62 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit }) 
           <Button type="submit" variant="gold" icon={IndianRupee} loading={busy}>Add</Button>
         </Form>
       )}
+    </Modal>
+  );
+}
+
+/** Push a room stay's check-out later; the extra nights are added to the bill. */
+function ExtendStayModal({ booking: b, onClose, onDone }) {
+  const { toast } = useUI();
+  const [checkOut, setCheckOut] = useState(addDays(b.check_out, 1));
+  const [rate, setRate] = useState(b.rate);
+  const [saving, setSaving] = useState(false);
+  const extraNights = Math.max(0, nights(b.check_out, checkOut));
+  const extra = Math.round(extraNights * (Number(rate) || 0));
+  const newTotal = (Number(b.total) || 0) + extra;
+  const newDue = newTotal - (Number(b.paid) || 0);
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      await api(`/room-bookings/${b.id}/extend`, { method: 'POST', body: { check_out: checkOut, rate } });
+      toast(`Stay extended to ${fmtDate(checkOut)}`);
+      await onDone();
+    } catch (e) {
+      toast(e.message, 'error');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Extend stay"
+      subtitle={`${b.guest_name} · ${b.room_name} · now till ${fmtDate(b.check_out)}`}
+      onClose={onClose}
+      footer={<>
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button form="extend-form" type="submit" variant="gold" icon={CalendarPlus} loading={saving} disabled={!extraNights}>Extend stay</Button>
+      </>}
+    >
+      <Form id="extend-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+        <Field label="New check-out"><DatePicker required value={checkOut} min={addDays(b.check_out, 1)} onChange={setCheckOut} /></Field>
+        <Field label="Rate per night (₹)"><Input type="number" min="0" required value={rate} onChange={e => setRate(e.target.value)} /></Field>
+        <div className="grid grid-cols-3 gap-3 sm:col-span-2">
+          {[
+            ['Extra', `${extraNights} night${extraNights === 1 ? '' : 's'} · ${inr(extra)}`, 'text-gold-800'],
+            ['New total', inr(newTotal), 'text-ink-900'],
+            ['Balance after', inr(Math.max(0, newDue)), newDue > 0 ? 'text-rose-600' : 'text-emerald-700'],
+          ].map(([l, v, c]) => (
+            <div key={l} className="rounded-2xl bg-stone-50 p-3">
+              <p className="text-[11px] font-semibold tracking-wider text-stone-400 uppercase">{l}</p>
+              <p className={cn('mt-1 text-sm font-semibold', c)}>{v}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-stone-500 sm:col-span-2">
+          The extra amount is added to the bill. Take the payment in the Payments section after extending.
+        </p>
+      </Form>
     </Modal>
   );
 }
