@@ -1,19 +1,19 @@
 import { useState } from 'react';
 import {
-  Ban, CalendarCheck, CalendarPlus, CircleCheck, IndianRupee, LogIn, LogOut, Pencil, Printer, Smartphone, Trash2,
+  Ban, BedDouble, CalendarCheck, CalendarPlus, CircleCheck, IndianRupee, LogIn, LogOut, Pencil, Printer, Smartphone, Trash2,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi, useRemove } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
 import {
-  HALL_STATUS, METHODS, ROOM_STATUS, addDays, esc, fmtDate, fmtDateTime, inr, nights, roomTimes, slotName, slotWithTime, today,
+  HALL_STATUS, METHODS, ROOM_STATUS, addDays, esc, fmtDate, fmtDateTime, inr, nights, lateCheckout, roomTimes, slotName, slotWithTime, today,
 } from '../utils.js';
 import { Badge, Button, Field, Form, Input, Modal, PageLoader, cn, useUI } from './ui.jsx';
 import { DatePicker, Select } from './pickers.jsx';
 import WhatsAppModal, { WhatsAppIcon } from './WhatsAppModal.jsx';
 
-export default function BookingDetail({ kind, id, onClose, onChanged, onEdit }) {
+export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, onBookAnother }) {
   const { isAdmin } = useAuth();
   const { settings } = useSettings();
   const { toast, confirm } = useUI();
@@ -78,6 +78,12 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit }) 
             ) : null}
           </span>
         )], ['Address', b.address || '—'],
+        ...(b.checked_out_at ? [['Checked out at', (
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            {fmtDateTime(b.checked_out_at)}
+            {lateCheckout(b, settings) && <Badge tone="amber">Late check-out</Badge>}
+          </span>
+        )]] : []),
       ]
     : [
         ['Hall', b.hall_name], ['Event', b.event_type || '—'],
@@ -92,6 +98,8 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit }) 
   if (isRoom && b.status === 'checked_in')
     actions.push(<Button key="out" icon={LogOut} disabled={busy}
       onClick={() => setStatus('checked_out', 'Guest checked out', balance > 0 && { title: 'Balance pending', message: `${inr(balance)} is still due from ${b.guest_name}. Check out anyway?`, confirmText: 'Check out' })}>Check out</Button>);
+  if (isRoom && onBookAnother && (b.status === 'reserved' || b.status === 'checked_in'))
+    actions.unshift(<Button key="more" variant="outline" icon={BedDouble} disabled={busy} onClick={() => onBookAnother(b)}>Add room for guest</Button>);
   if (isRoom && (b.status === 'reserved' || b.status === 'checked_in'))
     actions.unshift(<Button key="ext" variant="outline" icon={CalendarPlus} disabled={busy} onClick={() => setExtending(true)}>Extend stay</Button>);
   if (!isRoom && b.status === 'tentative')
@@ -129,7 +137,7 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit }) 
           >
             WhatsApp
           </Button>
-          <Button variant="outline" icon={Pencil} onClick={() => onEdit(b)}>Edit</Button>
+          {isAdmin && <Button variant="outline" icon={Pencil} onClick={() => onEdit(b)}>Edit</Button>}
           {actions}
         </>
       }
@@ -279,23 +287,17 @@ function FinalBillModal({ booking: b, onClose, onDone }) {
   const submit = async () => {
     setSaving(true);
     try {
-      await api(`/hall-bookings/${b.id}`, {
-        method: 'PUT',
+      // The server works out the amounts from the booking's and Settings' rates
+      await api(`/hall-bookings/${b.id}/final-bill`, {
+        method: 'POST',
         body: {
-          ...b,
           power_start: Number(f.power_start) || 0,
           power_end: Number(f.power_end) || 0,
           power_units: Number(f.power_units) || 0,
-          power_rate: powerRate,
-          power_amount: powerAmount,
           generator_type: f.generator_type,
           generator_hours: f.generator_type ? Number(f.generator_hours) || 0 : 0,
-          generator_rate: f.generator_type ? genRate : 0,
-          generator_amount: genAmount,
-          total: finalTotal,
         },
       });
-      await api(`/hall-bookings/${b.id}/status`, { method: 'PATCH', body: { status: 'completed' } });
       toast(due > 0 ? `Event completed · ${inr(due)} still to collect` : 'Event completed and fully paid');
       await onDone();
     } catch (e) {
@@ -437,6 +439,7 @@ function printReceipt(kind, b, settings) {
         ['Check-in', `${fmtDate(b.check_in)}, ${roomTimes(settings).checkIn}`],
         ['Check-out', `${fmtDate(b.check_out)}, ${roomTimes(settings).checkOut}`],
         ['Nights', nights(b.check_in, b.check_out)],
+        ...(b.checked_out_at ? [['Checked out at', `${fmtDateTime(b.checked_out_at)}${lateCheckout(b, settings) ? ' (late check-out)' : ''}`]] : []),
         ['Rate', `${inr(b.rate)} / night`],
         ...(Number(b.discount) > 0 ? [['Discount', `-${inr(b.discount)}`]] : []),
         ['ID Proof', `${b.id_proof || '—'}${b.id_photo_taken ? ' (Mobile Photo Verified)' : ''}`],

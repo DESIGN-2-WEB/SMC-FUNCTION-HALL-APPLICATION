@@ -149,6 +149,7 @@ export function migrate() {
   const newRbCols = [
     ['id_photo_taken', 'INTEGER NOT NULL DEFAULT 0'],
     ['discount', 'REAL NOT NULL DEFAULT 0'],
+    ['checked_out_at', "TEXT NOT NULL DEFAULT ''"], // when the guest actually left
   ];
   for (const [col, def] of newRbCols) {
     if (!rbCols.has(col)) {

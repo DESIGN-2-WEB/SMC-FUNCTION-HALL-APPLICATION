@@ -134,13 +134,13 @@ export default function Rooms() {
       </Card>
 
       {form && (
-        <RoomBookingForm booking={form.booking} rooms={rooms.data} defaultRoomId={form.roomId} defaultDate={form.date}
+        <RoomBookingForm booking={form.booking} guest={form.guest} rooms={rooms.data} defaultRoomId={form.roomId} defaultDate={form.date}
           onClose={() => setForm(null)}
           onSaved={saved => { setForm(null); refresh(); setDetailId(saved.id); }} />
       )}
       {detailId && !form && (
         <BookingDetail kind="room" id={detailId} onClose={() => setDetailId(null)} onChanged={refresh}
-          onEdit={b => setForm({ booking: b })} />
+          onEdit={b => setForm({ booking: b })} onBookAnother={b => setForm({ guest: b })} />
       )}
       {roomForm && <RoomForm room={roomForm} onClose={() => setRoomForm(null)} onSaved={() => { setRoomForm(null); refresh(); }} />}
     </>

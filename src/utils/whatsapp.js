@@ -72,7 +72,7 @@ Thank you for staying with us! You have successfully *checked out* of *${b.room_
 
 📌 *Booking ID:* #${b.id}
 📅 *Stay Duration:* ${fmtDate(b.check_in)} → ${fmtDate(b.check_out)} (${n} night${n === 1 ? '' : 's'})
-💰 *Final Bill Total:* ${inr(b.total)}
+${b.checked_out_at ? `🕒 *Checked out at:* ${fmtDateTime(b.checked_out_at)}\n` : ''}💰 *Final Bill Total:* ${inr(b.total)}
 💳 *Total Paid:* ${inr(b.paid)}
 ${balance > 0 ? `⚠️ *Pending Balance:* ${inr(balance)}` : '✨ *Settlement:* Fully Paid (₹0 Due)'}
 ${dueNote(balance, 'at the earliest', phone)}

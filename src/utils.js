@@ -110,6 +110,24 @@ export const slotWithTime = (s, settings) => {
   const t = slotTime(s, settings);
   return t ? `${slotName(s)} (${t})` : slotName(s);
 };
+/** "12:00 PM" -> minutes after midnight (null if it can't be read). */
+const toMinutes = t => {
+  const m = /^(\d{1,2})(?::(\d{2}))?\s*([AaPp][Mm])?$/.exec(String(t || '').trim());
+  if (!m) return null;
+  let h = Number(m[1]) % 12;
+  if (!m[3] && Number(m[1]) === 12) h = 12;
+  if (m[3] && /p/i.test(m[3])) h += 12;
+  return h * 60 + Number(m[2] || 0);
+};
+/** True when a guest left after the check-out date and time in Settings. */
+export const lateCheckout = (b, settings) => {
+  if (!b?.checked_out_at || !b.check_out) return false;
+  const [day, time = '00:00'] = String(b.checked_out_at).split(' ');
+  if (day !== b.check_out) return day > b.check_out;
+  const limit = toMinutes(roomTimes(settings).checkOut);
+  const [h, mm] = time.split(':').map(Number);
+  return limit != null && h * 60 + mm > limit;
+};
 /** Room check-in / check-out times from Settings. */
 export const roomTimes = settings => ({
   checkIn: settings?.room_checkin_time || '11:00 AM',

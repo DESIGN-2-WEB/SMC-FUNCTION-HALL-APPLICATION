@@ -216,23 +216,46 @@ function bookingRouter(kind) {
 
   r.post('/', (req, res) => {
     const d = K.parse(req.body);
-    const clash = K.conflict(d, 0);
-    if (clash) fail(clash, 409);
+    // A room booking can take more rooms for the same guest and dates ("Add another room").
+    // Each room becomes its own booking; all are checked first and saved together.
+    const extras = kind === 'room' && Array.isArray(req.body.extra_rooms)
+      ? req.body.extra_rooms.slice(0, 20).map(e => K.parse({ ...req.body, room_id: e.room_id, rate: e.rate, total: e.total, discount: 0 }))
+      : [];
+    const list = [d, ...extras];
+    const rooms = new Set();
+    for (const x of list) {
+      if (kind === 'room') {
+        if (rooms.has(x.room_id)) fail('The same room is chosen twice');
+        rooms.add(x.room_id);
+      }
+      const clash = K.conflict(x, 0);
+      if (clash) fail(clash, 409);
+    }
     const advance = num(req.body.advance);
     if (advance < 0) fail('Advance cannot be negative');
-    const id = tx(() => {
-      const cols = [...K.fields, 'status', 'created_by'];
-      const { id } = run(`INSERT INTO ${K.table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
-        ...K.fields.map(f => d[f]), K.initialStatus(req.body), req.user.id);
-      if (advance > 0) addPayment(kind, id, advance, str(req.body.method), kind === 'room' ? (advance >= d.total ? 'Full Payment' : 'Advance') : 'Advance', today(), req.user.id);
-      return id;
+    const ids = tx(() => {
+      let left = advance;
+      return list.map((x, i) => {
+        const cols = [...K.fields, 'status', 'created_by'];
+        const { id } = run(`INSERT INTO ${K.table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+          ...K.fields.map(f => x[f]), K.initialStatus(req.body), req.user.id);
+        // The money received now pays the rooms in order; anything extra stays on the last one
+        const pay = i === list.length - 1 ? left : Math.min(left, x.total);
+        if (pay > 0) {
+          addPayment(kind, id, pay, str(req.body.method), kind === 'room' ? (pay >= x.total ? 'Full Payment' : 'Advance') : 'Advance', today(), req.user.id);
+          left -= pay;
+        }
+        return id;
+      });
     });
-    const payNote = advance > 0 ? (kind === 'room' ? (advance >= d.total ? ` · full payment ${inr(advance)}` : ` · advance ${inr(advance)}`) : ` · advance ${inr(advance)}`) : '';
-    log(req.user.id, `${kind} booking created`, K.label(d) + payNote);
-    res.status(201).json(load(id));
+    const payNote = advance > 0 ? (kind === 'room' && advance >= list.reduce((n, x) => n + x.total, 0) ? ` · full payment ${inr(advance)}` : ` · advance ${inr(advance)}`) : '';
+    log(req.user.id, `${kind} booking created`, list.map(K.label).join(' + ') + payNote);
+    res.status(201).json({ ...load(ids[0]), extra_ids: ids.slice(1) });
   });
 
-  r.put('/:id', (req, res) => {
+  // Changing a booking's details is for the admin; staff use check-in/out, payments,
+  // extend stay and the final hall bill, which each change only their own part
+  r.put('/:id', requireAdmin, (req, res) => {
     const old = load(req.params.id);
     const d = K.parse(req.body);
     if (K.active.includes(old.status)) {
@@ -253,6 +276,9 @@ function bookingRouter(kind) {
       if (clash) fail(clash, 409);
     }
     run(`UPDATE ${K.table} SET status = ? WHERE id = ?`, status, b.id);
+    // Note the time the guest actually left (shown on the booking, receipt and WhatsApp message)
+    if (kind === 'room' && status === 'checked_out' && b.status !== 'checked_out')
+      run("UPDATE room_bookings SET checked_out_at = datetime('now', 'localtime') WHERE id = ?", b.id);
     log(req.user.id, `${kind} booking ${status.replace('_', ' ')}`, K.label(b));
     res.json(load(b.id));
   });
@@ -266,6 +292,39 @@ function bookingRouter(kind) {
     tx(() => addPayment(kind, b.id, amount, str(req.body.method), str(req.body.note), paidOn, req.user.id));
     log(req.user.id, 'payment received', `${inr(amount)} (${str(req.body.method) || 'Cash'}) · ${K.label(b)}`);
     res.status(201).json(load(b.id));
+  });
+
+  // End of an event: power meter reading and generator hours are added to the hall bill and the
+  // event is marked completed. Rates come from the booking and Settings, never from the browser,
+  // so staff can record usage without being able to change prices. Only the admin can redo a
+  // completed bill.
+  if (kind === 'hall') r.post('/:id/final-bill', (req, res) => {
+    const b = load(req.params.id);
+    if (b.status === 'cancelled') fail('This booking is cancelled');
+    if (b.status === 'completed' && req.user.role !== 'admin') fail('This event is already completed. Ask the admin to change its bill', 403);
+    const settings = getDBSettings();
+    const power_start = Math.max(0, num(req.body.power_start));
+    const power_end = Math.max(0, num(req.body.power_end));
+    const power_units = power_end > power_start ? power_end - power_start : Math.max(0, num(req.body.power_units));
+    const power_rate = Number(b.power_rate) || Number(settings.power_rate) || 15;
+    const power_amount = Math.round(power_units * power_rate);
+    const generator_type = str(req.body.generator_type);
+    let generators = [];
+    try { generators = JSON.parse(settings.generators || '[]'); } catch { generators = []; }
+    const listed = generator_type && Array.isArray(generators) ? generators.find(g => g.name === generator_type) : null;
+    if (generator_type && !listed && generator_type !== b.generator_type) fail('Choose a generator from the list');
+    const generator_rate = !generator_type ? 0 : listed ? Number(listed.rate) || 0 : Number(b.generator_rate) || 0;
+    const generator_hours = generator_type ? Math.max(0, num(req.body.generator_hours)) : 0;
+    const generator_amount = Math.round(generator_hours * generator_rate);
+    const base = (Number(b.total) || 0) - (Number(b.power_amount) || 0) - (Number(b.generator_amount) || 0);
+    const total = Math.max(0, base + power_amount + generator_amount);
+    run(`UPDATE hall_bookings SET power_start = ?, power_end = ?, power_units = ?, power_rate = ?, power_amount = ?,
+           generator_type = ?, generator_hours = ?, generator_rate = ?, generator_amount = ?, total = ?, status = 'completed'
+         WHERE id = ?`,
+      power_start, power_end, power_units, power_rate, power_amount,
+      generator_type, generator_hours, generator_rate, generator_amount, total, b.id);
+    log(req.user.id, 'hall final bill', `${K.label(b)} · power ${inr(power_amount)} · generator ${inr(generator_amount)} · total ${inr(total)}`);
+    res.json(load(b.id));
   });
 
   // Extend a current or upcoming room stay: push the check-out date later and add the extra

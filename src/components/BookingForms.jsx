@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { CalendarCheck, CheckCircle2, LogIn, Smartphone, Zap } from 'lucide-react';
+import { CalendarCheck, CheckCircle2, LogIn, Plus, Smartphone, Trash2, Zap } from 'lucide-react';
 import { useSave } from '../hooks.js';
 import { useSettings } from '../settings.jsx';
 import {
@@ -21,8 +21,7 @@ function AdvanceFields({ f, set }) {
   );
 }
 
-function RoomPaymentFields({ f, set, checkIn }) {
-  const total = Number(f.total) || 0;
+function RoomPaymentFields({ f, set, checkIn, total }) {
   const adv = Number(f.advance) || 0;
   const bal = Math.max(0, total - adv);
   const dueAt = checkIn ? 'check-out' : 'check-in';
@@ -90,14 +89,15 @@ function RoomPaymentFields({ f, set, checkIn }) {
   );
 }
 
-export function RoomBookingForm({ booking, rooms, defaultRoomId, defaultDate, onClose, onSaved }) {
+export function RoomBookingForm({ booking, guest, rooms, defaultRoomId, defaultDate, onClose, onSaved }) {
   const { toast } = useUI();
   const { settings } = useSettings();
   const editing = !!booking?.id;
+  // "Add room for this guest" opens the form with the guest's details and dates filled in
+  const firstDay = guest ? (guest.check_in > today() ? guest.check_in : today()) : defaultDate || today();
   const [isReservation, setIsReservation] = useState(() => {
     if (editing) return booking.status === 'reserved';
-    const ci = defaultDate || today();
-    return ci > today();
+    return firstDay > today();
   });
   const [f, setF] = useState(() => {
     if (editing) return {
@@ -105,16 +105,37 @@ export function RoomBookingForm({ booking, rooms, defaultRoomId, defaultDate, on
       id_photo_taken: !!booking.id_photo_taken,
       discount: booking.discount ?? '',
     };
-    const room = rooms.find(r => r.id === defaultRoomId) || rooms.find(r => r.state === 'available') || rooms[0];
-    const ci = defaultDate || today();
+    const room = rooms.find(r => r.id === defaultRoomId)
+      || rooms.find(r => r.state === 'available' && r.id !== guest?.room_id) || rooms[0];
+    const ci = firstDay;
+    const co = guest && guest.check_out > ci ? guest.check_out : addDays(ci, 1);
     const rate = room?.rate ?? 0;
+    const total = nights(ci, co) * rate;
     return {
-      room_id: room?.id ?? '', guest_name: '', phone: '', guests: 1, id_proof: '', id_photo_taken: false, address: '',
-      check_in: ci, check_out: addDays(ci, 1), rate, discount: '', total: rate, advance: '', method: 'Cash', notes: '',
+      room_id: room?.id ?? '', guest_name: guest?.guest_name || '', phone: guest?.phone || '', guests: 1,
+      id_proof: guest?.id_proof || '', id_photo_taken: !!guest?.id_photo_taken, address: guest?.address || '',
+      check_in: ci, check_out: co, rate, discount: '', total, advance: '', method: 'Cash', notes: '',
     };
   });
   const [autoTotal, setAutoTotal] = useState(() => !editing || booking.total === Math.max(0, nights(booking.check_in, booking.check_out) * (booking.rate || 0) - (booking.discount || 0)));
   const [saving, save] = useSave('/room-bookings', booking?.id, 'Booking', onSaved);
+  // More rooms for the same guest and dates; each is saved as its own room booking
+  const [extraRooms, setExtraRooms] = useState([]);
+  const stayNights = nights(f.check_in, f.check_out);
+  const extraTotal = extraRooms.reduce((sum, e) => sum + stayNights * (Number(e.rate) || 0), 0);
+  const grandTotal = (Number(f.total) || 0) + extraTotal;
+  const takenIds = [Number(f.room_id), ...extraRooms.map(e => Number(e.room_id))];
+  const addExtraRoom = () => {
+    const room = rooms.find(r => !takenIds.includes(r.id) && r.state === 'available') || rooms.find(r => !takenIds.includes(r.id));
+    if (!room) return toast('All rooms are already chosen', 'error');
+    setExtraRooms(list => [...list, { room_id: room.id, rate: room.rate }]);
+  };
+  const setExtra = (i, k, v) => setExtraRooms(list => list.map((e, j) => {
+    if (j !== i) return e;
+    const next = { ...e, [k]: v };
+    if (k === 'room_id') next.rate = rooms.find(r => r.id === Number(v))?.rate ?? e.rate;
+    return next;
+  }));
 
   const handleSubmit = () => {
     if (!f.guest_name?.trim()) return toast('Please enter guest name', 'error');
@@ -122,7 +143,8 @@ export function RoomBookingForm({ booking, rooms, defaultRoomId, defaultDate, on
     if (!f.check_in || !f.check_out) return toast('Please select check-in and check-out dates', 'error');
     if (!f.id_proof?.trim()) return toast('Please enter ID proof number (Aadhaar / DL / Passport)', 'error');
     if (!f.id_photo_taken) return toast('Please confirm taking the photo of the ID proof on mobile phone', 'error');
-    if (!editing && (Number(f.advance) || 0) > (Number(f.total) || 0)) return toast('Amount received is more than the room bill', 'error');
+    if (!editing && (Number(f.advance) || 0) > grandTotal) return toast('Amount received is more than the room bill', 'error');
+    if (new Set(takenIds).size !== takenIds.length) return toast('The same room is chosen twice', 'error');
 
     save({
       ...f,
@@ -130,7 +152,10 @@ export function RoomBookingForm({ booking, rooms, defaultRoomId, defaultDate, on
       room_id: Number(f.room_id),
       discount: Number(f.discount) || 0,
       id_photo_taken: f.id_photo_taken ? 1 : 0,
-      ...(editing ? {} : { advance: Number(f.advance) || 0 }),
+      ...(editing ? {} : {
+        advance: Number(f.advance) || 0,
+        extra_rooms: extraRooms.map(e => ({ room_id: Number(e.room_id), rate: Number(e.rate) || 0, total: stayNights * (Number(e.rate) || 0) })),
+      }),
     });
   };
 
@@ -281,7 +306,33 @@ export function RoomBookingForm({ booking, rooms, defaultRoomId, defaultDate, on
             )}
           </div>
         </Field>
-        {!editing && <RoomPaymentFields f={f} set={set} checkIn={!isReservation} />}
+        {!editing && (
+          <div className="space-y-2.5 sm:col-span-2">
+            {extraRooms.map((e, i) => (
+              <div key={i} className="grid grid-cols-[minmax(0,1fr)_5.5rem_auto] items-end gap-2 rounded-xl border border-stone-200 bg-stone-50/70 p-2.5">
+                <Field label={`Extra room ${i + 1}`} className="min-w-0">
+                  <Select value={e.room_id} onChange={v => setExtra(i, 'room_id', v)} options={rooms.map(r => ({
+                    value: r.id, label: `${r.name} — ${inr(r.rate)}/night`, hint: `${r.type} · up to ${r.capacity} guests`,
+                  }))} />
+                </Field>
+                <Field label="Rate/night">
+                  <Input type="number" min="0" value={e.rate} onChange={ev => setExtra(i, 'rate', ev.target.value)} />
+                </Field>
+                <Button type="button" variant="ghost" size="sm" icon={Trash2} title="Remove this room"
+                  onClick={() => setExtraRooms(list => list.filter((_, j) => j !== i))} />
+              </div>
+            ))}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Button type="button" variant="outline" size="sm" icon={Plus} onClick={addExtraRoom}>Add another room</Button>
+              {extraRooms.length > 0 && (
+                <span className="text-xs text-stone-500">
+                  {extraRooms.length + 1} rooms for {f.guest_name || 'this guest'} · each saved as its own booking · all rooms {inr(grandTotal)}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+        {!editing && <RoomPaymentFields f={f} set={set} checkIn={!isReservation} total={grandTotal} />}
         <Field label="Notes" className="sm:col-span-2"><Textarea value={f.notes} onChange={e => set('notes', e.target.value)} placeholder="Extra bed, early check-in, etc." /></Field>
       </Form>
     </Modal>
