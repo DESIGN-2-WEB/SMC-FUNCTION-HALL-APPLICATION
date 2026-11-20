@@ -246,7 +246,7 @@ export function RoomBookingForm({ booking, guest, rooms, defaultRoomId, defaultD
                 </div>
               </div>
               <span className={cn(
-                "rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                "shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold",
                 isReservation ? "bg-gold-200 text-gold-900" : "bg-stone-200 text-stone-600"
               )}>
                 {isReservation ? "Reservation Mode" : "Direct Check-in"}

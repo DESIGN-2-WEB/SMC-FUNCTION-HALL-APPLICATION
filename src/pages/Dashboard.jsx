@@ -61,7 +61,7 @@ export default function Dashboard() {
         <Card className="xl:col-span-2">
           <CardHeader icon={BedDouble} title="Room status" subtitle="Live view of all rooms"
             action={<Button variant="ghost" size="sm" onClick={() => nav('/rooms')}>Manage <ArrowRight size={14} /></Button>} />
-          <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3 [&>*]:min-w-0">
             {data.rooms.map(r => {
               const s = ROOM_STATE[r.state];
               const suite = r.type === 'Suite';

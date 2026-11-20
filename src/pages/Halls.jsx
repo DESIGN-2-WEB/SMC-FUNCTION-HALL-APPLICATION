@@ -213,7 +213,7 @@ export default function Halls() {
         </div>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
         {[...(halls.data || [])]
           .sort((a, b) => {
             const aCombo = Boolean(a.is_combo || /combo/i.test(a.name));

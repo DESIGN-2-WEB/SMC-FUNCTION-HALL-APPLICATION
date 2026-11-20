@@ -88,7 +88,7 @@ export default function Layout() {
             end={end}
             title={label}
             className={({ isActive }) => cn(
-              'group relative flex items-center rounded-xl text-sm font-medium transition duration-150',
+              'group relative flex items-center rounded-xl text-sm font-medium transition-colors duration-150',
               isCollapsed ? 'justify-center p-3' : 'gap-3 px-3.5 py-2.5',
               isActive
                 ? 'bg-white/10 text-white shadow-xs'

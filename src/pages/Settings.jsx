@@ -136,7 +136,7 @@ function CollapsibleCard({ id, icon: Icon, title, subtitle, badge, isOpen, onTog
                 </span>
               )}
             </div>
-            {subtitle && <p className="text-xs text-stone-500 mt-0.5 truncate">{subtitle}</p>}
+            {subtitle && <p className="mt-0.5 line-clamp-2 text-xs text-stone-500">{subtitle}</p>}
           </div>
         </div>
 

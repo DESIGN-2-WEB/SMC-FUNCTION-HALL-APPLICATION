@@ -207,7 +207,7 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
               onDone={async () => { setChargesOpen(false); await reload(); onChanged?.(); }}
             />
           )}
-          <div className="grid grid-cols-3 gap-3 text-sm">
+          <div className="grid grid-cols-1 gap-3 text-sm min-[420px]:grid-cols-3">
             <div className="rounded-xl bg-white p-2.5 border border-stone-200">
               <p className="text-[11px] text-stone-500 uppercase tracking-wider font-semibold">Hall Rent</p>
               <p className="font-semibold text-ink-900 mt-0.5">{inr(b.rent || b.total)}</p>

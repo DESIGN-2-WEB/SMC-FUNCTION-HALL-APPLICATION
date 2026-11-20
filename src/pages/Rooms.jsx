@@ -61,7 +61,8 @@ export default function Rooms() {
         </>}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      {/* as many cards per row as fit at a readable width (names and guests stay on one line) */}
+      <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,15rem),1fr))]">
         {rooms.data.map((r, i) => (
           <RoomCard key={r.id} room={r} index={i} isAdmin={isAdmin}
             onOpen={() => (r.current ? setDetailId(r.current.id) : setForm({ roomId: r.id }))}

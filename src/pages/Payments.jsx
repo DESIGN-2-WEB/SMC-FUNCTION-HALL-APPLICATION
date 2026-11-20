@@ -88,7 +88,7 @@ export default function Payments() {
                 {list.map(p => (
                   <tr key={p.id} className="transition hover:bg-gold-50/40">
                     <td className="td whitespace-nowrap">{fmtDate(p.paid_on)}</td>
-                    <td className="td">
+                    <td className="td min-w-56">
                       <button className="cursor-pointer text-left font-medium text-ink-900 hover:text-gold-600" onClick={() => nav(`/${p.kind === 'room' ? 'rooms' : 'halls'}?booking=${p.booking_id}`)}>
                         {p.party || `Booking #${p.booking_id}`}
                       </button>
@@ -98,7 +98,7 @@ export default function Payments() {
                       <span className="flex items-center gap-1.5">{p.kind === 'room' ? <BedDouble size={14} className="text-sky-600" /> : <PartyPopper size={14} className="text-gold-600" />}{p.unit || '—'}</span>
                     </td>
                     <td className="td"><Badge>{p.method}</Badge></td>
-                    <td className="td whitespace-nowrap text-stone-500">{p.created_by_name || '—'}</td>
+                    <td className="td max-w-36 text-stone-500">{p.created_by_name || '—'}</td>
                     <td className="td text-right font-semibold whitespace-nowrap text-emerald-700">{inr(p.amount)}</td>
                     {isAdmin && (
                       <td className="td text-right">

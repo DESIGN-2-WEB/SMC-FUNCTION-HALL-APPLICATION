@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api } from './api.js';
+import { api, apiCache } from './api.js';
 import { useUI } from './components/ui.jsx';
 
-/** Fetch `path` on mount / when it changes. Keeps old data while reloading. */
+/**
+ * Fetch `path` on mount / when it changes. A page opened before shows its last data at once
+ * (from apiCache) and is refreshed in the background; `loading` is only true while there is
+ * nothing to show yet.
+ */
 export function useApi(path) {
-  const [state, setState] = useState({ data: null, loading: true, error: null });
+  const [state, setState] = useState(() => {
+    const cached = apiCache.get(path);
+    return { data: cached ?? null, loading: cached === undefined, error: null };
+  });
   const load = useCallback(async () => {
-    setState(s => ({ ...s, loading: true }));
+    const cached = apiCache.get(path);
+    setState(s => (cached !== undefined ? { data: cached, loading: false, error: null } : { ...s, loading: s.data == null }));
     try {
       const data = await api(path);
+      apiCache.set(path, data);
       setState({ data, loading: false, error: null });
     } catch (e) {
       setState(s => ({ ...s, loading: false, error: e.message }));

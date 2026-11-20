@@ -209,8 +209,8 @@ export default function BulkPackageModal({ onClose, onSaved }) {
       subtitle="Pick any mix of hall, rooms and supplies. Everything goes on one combined bill."
       onClose={onClose}
       footer={
-        <div className="flex w-full items-center justify-between gap-3">
-          <div className="text-left">
+        <div className="flex w-full flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 text-left">
             <span className="text-xs text-stone-500 font-medium block">Combo Total:</span>
             <span className="font-display text-xl font-bold text-ink-900">{inr(grandTotal)}</span>
             {advanceAmount > 0 && (
@@ -219,8 +219,9 @@ export default function BulkPackageModal({ onClose, onSaved }) {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={onClose} disabled={saving}>
+          {/* on phones the buttons take their own full-width row under the total */}
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <Button variant="outline" onClick={onClose} disabled={saving} className="flex-1 sm:flex-none">
               Cancel
             </Button>
             <Button
@@ -229,8 +230,10 @@ export default function BulkPackageModal({ onClose, onSaved }) {
               variant="gold"
               icon={Sparkles}
               loading={saving}
+              className="flex-[2] sm:flex-none"
             >
-              Confirm Combo Booking
+              <span className="sm:hidden">Confirm combo</span>
+              <span className="hidden sm:inline">Confirm Combo Booking</span>
             </Button>
           </div>
         </div>
@@ -520,8 +523,8 @@ export default function BulkPackageModal({ onClose, onSaved }) {
                   )}
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs text-ink-900 font-semibold truncate">{item.name}</p>
-                    <div className="flex items-center gap-2 text-[11px] text-stone-400">
+                    <p className="line-clamp-2 text-xs font-semibold text-ink-900">{item.name}</p>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-stone-400">
                       <span>{item.category}</span>
                       <span>·</span>
                       <span>
@@ -534,7 +537,7 @@ export default function BulkPackageModal({ onClose, onSaved }) {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     {isPicked && (
                       <span className="text-xs font-bold text-amber-900">
                         {inr(itemTotal)}

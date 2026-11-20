@@ -1236,7 +1236,7 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
                 <Sparkles size={14} className="text-gold-600" />
                 Quick Autofill from Active Function:
               </span>
-              <span className="text-[11px] text-gold-800">Optional shortcut</span>
+              <span className="hidden text-[11px] text-gold-800 sm:inline">Optional shortcut</span>
             </div>
             <Select
               className="bg-white text-xs"
@@ -1317,7 +1317,7 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
               searchable
               className="bg-white"
               value={itemToAdd}
-              placeholder="🔍 Search & select equipment to add (English or Telugu)…"
+              placeholder="Search equipment (English / తెలుగు)…"
               onChange={addItem}
               options={itemOptions}
             />

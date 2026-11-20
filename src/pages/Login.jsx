@@ -7,7 +7,7 @@ import { Brand } from '../components/Layout.jsx';
 import { Button, Form } from '../components/ui.jsx';
 import { Select } from '../components/pickers.jsx';
 import SplitText from '../components/reactbits/SplitText.jsx';
-import { gsap, reducedMotion, useGSAP } from '../motion.js';
+import { reducedMotion, reveal, useGSAP } from '../motion.js';
 
 const FEATURES = [
   [BedDouble, 'Suite & AC rooms', 'Bookings, check-ins and payments'],
@@ -29,11 +29,11 @@ export default function Login() {
   // Showcase text and feature cards rise in one after another
   useGSAP(() => {
     if (reducedMotion()) return;
-    // fromTo with explicit end values: from() would read the end state from the current
-    // style, which CSS transitions on these elements can still be holding at 0
-    const done = { clearProps: 'opacity,visibility,transform' };
-    gsap.fromTo('[data-rise]', { autoAlpha: 0, y: 24 }, { autoAlpha: 1, y: 0, duration: 0.7, stagger: 0.12, delay: 0.15, ...done });
-    gsap.fromTo('[data-feature]', { autoAlpha: 0, x: -24 }, { autoAlpha: 1, x: 0, duration: 0.6, stagger: 0.1, delay: 0.55, ...done });
+    // reveal(): fromTo with explicit end values, plus a timer that shows everything even if the
+    // browser slows animation frames down, so the panel text can never stay hidden
+    const a = reveal('[data-rise]', { autoAlpha: 0, y: 24 }, { autoAlpha: 1, y: 0, duration: 0.7, stagger: 0.12, delay: 0.15 });
+    const b = reveal('[data-feature]', { autoAlpha: 0, x: -24 }, { autoAlpha: 1, x: 0, duration: 0.6, stagger: 0.1, delay: 0.55 });
+    return () => { a(); b(); };
   }, { scope: panelRef });
 
   useEffect(() => {
