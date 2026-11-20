@@ -271,6 +271,10 @@ function bookingRouter(kind) {
     const b = load(req.params.id);
     const status = str(req.body.status);
     if (!K.statuses.includes(status)) fail('Invalid status');
+    // Reopening a finished booking is for the admin: otherwise staff could reopen a completed
+    // event and enter its final bill again, which only the admin may change
+    const finished = !K.active.includes(b.status);
+    if (finished && status !== b.status && req.user.role !== 'admin') fail('Only the admin can reopen a finished booking', 403);
     if (K.active.includes(status) && !K.active.includes(b.status)) {
       const clash = K.conflict(b, b.id);
       if (clash) fail(clash, 409);
