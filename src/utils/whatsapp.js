@@ -19,6 +19,15 @@ export function cleanPhone(raw, defaultCountry = '91') {
 /**
  * Builds formatted WhatsApp message for Room Bookings.
  */
+/**
+ * Clear "payment due" note added to every message that has money still to collect.
+ * `when` says by when it should be paid, e.g. "at check-in" or "before the event".
+ */
+function dueNote(balance, when, phone) {
+  if (!(balance > 0)) return '';
+  return `\n⚠️ *PAYMENT DUE: ${inr(balance)}*\nKindly pay the balance of ${inr(balance)} ${when}. For payment details please call ${phone}.\n`;
+}
+
 export function buildRoomMessage(b, settings, type = 'booking') {
   const propName = settings?.property_name || 'SMC Function Hall & Lodge';
   const tagline = settings?.property_tagline || 'Kalyana Mandapam & AC Rooms';
@@ -42,6 +51,10 @@ Welcome! You have successfully *checked in* to *${b.room_name}*.
 📅 *Check-out:* ${fmtDate(b.check_out)} by ${t.checkOut} (${n} night${n === 1 ? '' : 's'})
 👥 *Guests:* ${b.guests}
 
+💰 *Room Bill:* ${inr(b.total)}
+💳 *Paid:* ${inr(b.paid)}
+${balance > 0 ? `⏳ *Balance Due:* ${inr(balance)}` : '✨ *Balance Due:* ₹0 (Paid in Full)'}
+${dueNote(balance, 'before check-out', phone)}
 📞 *Front Desk Assistance:* ${phone}
 📍 *Address:* ${address}
 
@@ -62,7 +75,7 @@ Thank you for staying with us! You have successfully *checked out* of *${b.room_
 💰 *Final Bill Total:* ${inr(b.total)}
 💳 *Total Paid:* ${inr(b.paid)}
 ${balance > 0 ? `⚠️ *Pending Balance:* ${inr(balance)}` : '✨ *Settlement:* Fully Paid (₹0 Due)'}
-
+${dueNote(balance, 'at the earliest', phone)}
 📍 *Address:* ${address}
 📞 *Contact:* ${phone}
 
@@ -85,9 +98,9 @@ Your room booking has been *confirmed*!
 🌙 *Duration:* ${n} night${n === 1 ? '' : 's'}
 👥 *No. of Guests:* ${b.guests}
 ${b.discount > 0 ? `🏷 *Discount Applied:* ${inr(b.discount)}\n` : ''}💰 *Total Room Fee:* ${inr(b.total)}
-💳 *Payment Received:* ${inr(b.paid)} (Full Payment Upfront)
-✨ *Balance Due:* ₹0 (Paid in Full)
-
+💳 *Payment Received:* ${inr(b.paid)}
+${balance > 0 ? `⏳ *Balance Due:* ${inr(balance)}` : '✨ *Balance Due:* ₹0 (Paid in Full)'}
+${dueNote(balance, b.status === 'checked_in' ? 'before check-out' : 'at check-in', phone)}
 📍 *Address:* ${address}
 📞 *Helpdesk Contact:* ${phone}
 
@@ -126,7 +139,7 @@ ${b.power_amount > 0 ? `• Power Bill: ${inr(b.power_amount)} (${b.power_units}
 💰 *Final Bill Total:* ${inr(b.total)}
 💳 *Amount Received:* ${inr(b.paid)}
 ${balance > 0 ? `⚠️ *Pending Balance Due:* ${inr(balance)}` : '✨ *Settlement Status:* Fully Paid'}
-
+${dueNote(balance, 'at the earliest', phone)}
 📍 *Venue Address:* ${address}
 📞 *Contact:* ${phone}
 
@@ -151,8 +164,8 @@ Your banquet hall booking has been *confirmed*!
 
 💵 *Base Hall Rent:* ${inr(b.rent || b.total)}
 💳 *Advance Received:* ${inr(b.paid)}
-⏳ *Pending Rent Due:* ${inr(balance)}
-
+${balance > 0 ? `⏳ *Pending Rent Due:* ${inr(balance)}` : '✨ *Rent:* Paid in Full'}
+${dueNote(balance, 'before the event', phone)}
 ⚡ *Extra Charges Note:*
 Electricity units & Generator hours will be recorded on the event day and added to the final bill.
 
@@ -182,7 +195,7 @@ export function buildSupplyMessage(item, moveOrRental, settings) {
 *Rented Date:* ${fmtDate(moveOrRental.rent_date)}
 *Expected Return:* ${moveOrRental.expected_return_date ? fmtDate(moveOrRental.expected_return_date) : 'After function'}
 *Status:* ${isReturned ? `✅ Returned on ${fmtDate(moveOrRental.return_date)}` : '⏳ Active (With Function)'}
-${moveOrRental.damage_notes ? `*Condition Notes:* ${moveOrRental.damage_notes}\n` : ''}${moveOrRental.notes ? `*Notes:* ${moveOrRental.notes}\n` : ''}
+${moveOrRental.advance_amount > 0 ? `*Advance Paid:* ${inr(moveOrRental.advance_amount)}\n` : ''}${dueNote(Math.max(0, (Number(moveOrRental.total_rent) || 0) - (Number(moveOrRental.advance_amount) || 0)), isReturned ? 'at the earliest' : 'on return', phone)}${moveOrRental.damage_notes ? `*Condition Notes:* ${moveOrRental.damage_notes}\n` : ''}${moveOrRental.notes ? `*Notes:* ${moveOrRental.notes}\n` : ''}
 📞 Contact: ${phone}
 Thank you for choosing ${propName}!`
     );
@@ -210,7 +223,8 @@ export function buildPackageMessage(pkg, settings) {
   const phone = settings?.phone || '94411 17278 / 94410 89616';
   const address = settings?.address || 'Next to BOI, K.T. Road, Palasa – Kasibugga';
 
-  const balance = Math.max(0, (pkg.total_amount || 0) - (pkg.advance_paid || 0));
+  const grandTotal = Number(pkg.grand_total ?? pkg.total_amount) || 0;
+  const balance = Math.max(0, Number(pkg.balance ?? grandTotal - (pkg.advance_paid || 0)) || 0);
 
   let hallSection = '';
   if (pkg.hall) {
@@ -241,11 +255,11 @@ ${hallSection}${roomsSection}${suppliesSection}
 
 ━━━━━━━━━━━━━━━━━━━━
 💵 *PACKAGE BILLING BREAKDOWN:*
-${pkg.hall_amount ? `• Hall Rent: ${inr(pkg.hall_amount)}\n` : ''}${pkg.rooms_amount ? `• Rooms Total: ${inr(pkg.rooms_amount)}\n` : ''}${pkg.supplies_amount ? `• Equipment Rent: ${inr(pkg.supplies_amount)}\n` : ''}⭐ *GRAND TOTAL:* ${inr(pkg.total_amount)}
+${pkg.hall_amount ? `• Hall Rent: ${inr(pkg.hall_amount)}\n` : ''}${pkg.rooms_amount ? `• Rooms Total: ${inr(pkg.rooms_amount)}\n` : ''}${pkg.supplies_amount ? `• Equipment Rent: ${inr(pkg.supplies_amount)}\n` : ''}${pkg.extras_amount > 0 ? `• Power & Generator: ${inr(pkg.extras_amount)}\n` : ''}⭐ *GRAND TOTAL:* ${inr(grandTotal)}
 💳 *Advance Received:* ${inr(pkg.advance_paid)} (${pkg.payment_method || 'Cash'})
-⏳ *Balance Due:* ${inr(balance)}
+${balance > 0 ? `⏳ *Balance Due:* ${inr(balance)}` : '✨ *Balance Due:* ₹0 (Paid in Full)'}
 ━━━━━━━━━━━━━━━━━━━━
-
+${dueNote(balance, 'before the event', phone)}
 📍 *Address:* ${address}
 📞 *Contact & Enquiries:* ${phone}
 
@@ -292,7 +306,7 @@ ${itemsText}
 💳 *Advance Received:* ${inr(advance)}${order.payment_method ? ` (${order.payment_method})` : ''}
 ${balance > 0 ? `⏳ *Balance Due on Return:* ${inr(balance)}` : '✨ *Settlement:* Advance Paid in Full'}
 ━━━━━━━━━━━━━━━━━━━━
-${order.notes ? `📝 *Notes:* ${order.notes}\n` : ''}
+${dueNote(balance, 'when the items are returned', phone)}${order.notes ? `📝 *Notes:* ${order.notes}\n` : ''}
 📍 *Address:* ${address}
 📞 *Enquiries / Return Desk:* ${phone}
 
