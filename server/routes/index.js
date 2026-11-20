@@ -10,6 +10,7 @@ import supplies from './supplies.js';
 import packages from './packages.js';
 import dashboard from './dashboard.js';
 import users, { activity } from './users.js';
+import backup from './backup.js';
 
 const api = Router();
 
@@ -27,6 +28,7 @@ api.use('/supplies', supplies);
 api.use('/packages', packages);
 api.use('/users', requireAdmin, users);
 api.use('/activity', requireAdmin, activity);
+api.use('/backup', requireAdmin, backup);
 
 api.use((req, res) => res.status(404).json({ error: 'Not found' }));
 

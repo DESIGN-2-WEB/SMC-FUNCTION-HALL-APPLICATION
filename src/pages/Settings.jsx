@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  ChevronDown, ChevronsUpDown, Clock, FoldVertical, KeyRound, Landmark, ListChecks, Lock, Plus, Save, Shield, Trash2, UnfoldVertical, UserRound, Zap,
+  ChevronDown, ChevronsUpDown, Clock, DatabaseBackup, FoldVertical, KeyRound, Landmark, ListChecks, Lock, Plus, Save, Shield, Trash2, UnfoldVertical, UserRound, Zap,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
@@ -8,6 +8,7 @@ import { useSettings } from '../settings.jsx';
 import { Button, Card, Field, Form, Input, PageHeader, Textarea, cn, useUI } from '../components/ui.jsx';
 import { Select } from '../components/pickers.jsx';
 import AccountModal from '../components/AccountModal.jsx';
+import BackupRestore from '../components/BackupRestore.jsx';
 import { WhatsAppIcon } from '../components/WhatsAppModal.jsx';
 
 function parseGenerators(raw, fallback120, fallback30) {
@@ -178,6 +179,7 @@ export default function Settings() {
     tariffs: false,
     events: false,
     timings: false,
+    backup: false,
     whatsapp: false,
     account: !isAdmin,
   });
@@ -218,6 +220,7 @@ export default function Settings() {
       tariffs: nextState,
       events: nextState,
       timings: nextState,
+      backup: nextState,
       whatsapp: nextState,
       account: nextState,
     });
@@ -696,6 +699,18 @@ export default function Settings() {
               ready-made message filled in. Check it and press send. No API or account setup is needed.
             </p>
           </div>
+        </CollapsibleCard>
+
+        {/* 5. Backup & restore */}
+        <CollapsibleCard
+          id="backup"
+          icon={DatabaseBackup}
+          title="Backup & Restore"
+          subtitle="Download all data as one file, or bring data back from a backup"
+          isOpen={openSections.backup}
+          onToggle={toggleSection}
+        >
+          <BackupRestore />
         </CollapsibleCard>
 
         {/* Bottom Save Action */}
