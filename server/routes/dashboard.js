@@ -62,7 +62,8 @@ r.get('/calendar', (req, res) => {
   res.json({
     month,
     rooms: all("SELECT id, number, name FROM rooms ORDER BY type = 'Suite' DESC, number"),
-    halls: all('SELECT id, name FROM halls ORDER BY capacity DESC'),
+    // in the order they were added, so each hall keeps its calendar colour when new ones come
+    halls: all('SELECT id, name, is_combo, included_hall_ids FROM halls ORDER BY id'),
     hallBookings: all(`SELECT id, hall_id, customer_name, event_type, event_date, slot, status FROM hall_bookings
                        WHERE event_date BETWEEN ? AND ? AND status <> 'cancelled' ORDER BY event_date, slot`, from, to),
     roomBookings: all(`SELECT id, room_id, guest_name, check_in, check_out, status FROM room_bookings
