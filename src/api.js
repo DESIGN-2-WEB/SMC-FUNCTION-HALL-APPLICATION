@@ -3,7 +3,12 @@ export const getToken = () => localStorage.getItem(KEY);
 // Last answer for each page's data, so a page opened before shows at once while it refreshes.
 // Kept in memory only, and emptied whenever the sign-in changes.
 export const apiCache = new Map();
+// Goes up on every sign-in / sign-out. An answer to a request made before the change belongs to
+// the previous person and is thrown away, never cached or shown (see useApi).
+let generation = 0;
+export const sessionGeneration = () => generation;
 export const setToken = t => {
+  generation++;
   apiCache.clear();
   if (t) localStorage.setItem(KEY, t);
   else localStorage.removeItem(KEY);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, apiCache } from './api.js';
+import { api, apiCache, sessionGeneration } from './api.js';
 import { useUI } from './components/ui.jsx';
 
 /**
@@ -15,11 +15,14 @@ export function useApi(path) {
   const load = useCallback(async () => {
     const cached = apiCache.get(path);
     setState(s => (cached !== undefined ? { data: cached, loading: false, error: null } : { ...s, loading: s.data == null }));
+    const gen = sessionGeneration();
     try {
       const data = await api(path);
+      if (gen !== sessionGeneration()) return; // signed out or in as someone else meanwhile
       apiCache.set(path, data);
       setState({ data, loading: false, error: null });
     } catch (e) {
+      if (gen !== sessionGeneration()) return;
       setState(s => ({ ...s, loading: false, error: e.message }));
     }
   }, [path]);
