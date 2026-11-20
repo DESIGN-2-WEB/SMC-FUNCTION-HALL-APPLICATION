@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { all, get, log, run, today, tx } from '../db.js';
 import { fail, found, isDate, num, str } from '../lib/http.js';
+import { setBillNo } from '../lib/billno.js';
 
 const r = Router();
 export default r;
@@ -269,6 +270,7 @@ r.post('/', (req, res) => {
       packageName, customer_name, phone, event_type, event_date, check_in_date, check_out_date, slot,
       hall_amount, rooms_amount, supplies_amount, total_amount, advance_paid, payment_method, notes, req.user.id
     );
+    setBillNo('event_packages', packageId);
 
     // 2. Create Hall Booking
     let hallBookingId = null;
@@ -283,6 +285,7 @@ r.post('/', (req, res) => {
         hall_amount, hall_amount, advance_paid, notes ? `Part of Package #${packageId} · ${notes}` : `Part of Package #${packageId}`, req.user.id
       );
       hallBookingId = hRes.id;
+      setBillNo('hall_bookings', hallBookingId);
     }
 
     // 3. Create Room Bookings
@@ -299,10 +302,12 @@ r.post('/', (req, res) => {
         `Part of Event Package #${packageId} (${event_type})`, req.user.id
       );
       roomBookingIds.push(rbRes.id);
+      setBillNo('room_bookings', rbRes.id);
     }
 
     // 4. Create Supply Rentals & Decrement Stock
     const supplyRentalIds = [];
+    let suppliesBillNo = null; // all supplies of one combo share one bill number
     for (const sup of selectedSupplies) {
       const currentSupply = get('SELECT quantity, rented_quantity FROM supplies WHERE id = ?', sup.supply_id);
       const newAvail = currentSupply.quantity - sup.quantity;
@@ -322,6 +327,7 @@ r.post('/', (req, res) => {
         `Part of Event Package #${packageId}`, req.user.id
       );
       supplyRentalIds.push(srRes.id);
+      suppliesBillNo = setBillNo('supply_rentals', srRes.id, suppliesBillNo || undefined);
 
       // Record outward stock move
       run("INSERT INTO stock_moves (supply_id, type, quantity, balance, note, created_by) VALUES (?, 'out', ?, ?, ?, ?)",

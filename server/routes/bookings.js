@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { all, get, log, run, today, tx } from '../db.js';
 import { fail, found, inr, isDate, num, str } from '../lib/http.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { setBillNo } from '../lib/billno.js';
 import { getDBSettings } from './settings.js';
 
 /*
@@ -239,6 +240,7 @@ function bookingRouter(kind) {
         const cols = [...K.fields, 'status', 'created_by'];
         const { id } = run(`INSERT INTO ${K.table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
           ...K.fields.map(f => x[f]), K.initialStatus(req.body), req.user.id);
+        setBillNo(K.table, id);
         // The money received now pays the rooms in order; anything extra stays on the last one
         const pay = i === list.length - 1 ? left : Math.min(left, x.total);
         if (pay > 0) {

@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { db, get, run, tx } from './db.js';
+import { backfillBillNos } from './lib/billno.js';
 
 export function migrate() {
   db.exec(`
@@ -276,6 +277,12 @@ export function migrate() {
     db.exec("ALTER TABLE supply_rentals ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'Cash'");
   }
 
+  // Bill number shown to customers (see lib/billno.js); filled in for older rows by applyDefaults
+  for (const table of ['room_bookings', 'hall_bookings', 'supply_rentals', 'event_packages']) {
+    const cols = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name));
+    if (!cols.has('bill_no')) db.exec(`ALTER TABLE ${table} ADD COLUMN bill_no TEXT NOT NULL DEFAULT ''`);
+  }
+
   // One-time backfill, only when the rental columns were just added to an old database
   if (!sCols.has('total_quantity')) {
     db.exec("UPDATE supplies SET total_quantity = quantity WHERE total_quantity = 0 AND quantity > 0");
@@ -294,6 +301,7 @@ export function applyDefaults() {
     insertSetting.run(k, String(v));
   }
   db.prepare(`DELETE FROM settings WHERE key IN (${RETIRED_SETTINGS.map(() => '?').join(', ')})`).run(...RETIRED_SETTINGS);
+  backfillBillNos(); // older bookings get a bill number once the real data has loaded
 }
 
 export const DEFAULT_GENERATORS = [

@@ -72,7 +72,7 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
     <>
       <Modal
         size="lg"
-        title={`Combo #${pkg.id} · ${pkg.customer_name}`}
+        title={`Combo ${pkg.bill_no || `#${pkg.id}`} · ${pkg.customer_name}`}
         subtitle={`${pkg.customer_name} · ${pkg.phone} · ${fmtDate(pkg.event_date)} (${slotLabel(pkg.slot)})`}
         onClose={onClose}
         footer={
@@ -397,7 +397,7 @@ export function printComboBill(pkg, settings) {
 
   const w = window.open('', '_blank', 'width=800,height=900');
   if (!w) return;
-  w.document.write(`<!doctype html><html><head><title>Combined Bill #C${pkg.id} - ${esc(propName)}</title><style>
+  w.document.write(`<!doctype html><html><head><title>Combined Bill ${esc(pkg.bill_no || '')} - ${esc(propName)}</title><style>
     body{font-family:Georgia,serif;color:#0e1a2b;max-width:700px;margin:30px auto;padding:0 24px}
     h1{margin:0;font-size:24px}.banner{font-size:12px;color:#a57837;font-weight:bold;margin-top:2px}
     .sub,.addr{font-family:Arial,sans-serif;font-size:12px;color:#555;margin-top:2px}.addr{font-size:11px;color:#777}
@@ -419,7 +419,7 @@ export function printComboBill(pkg, settings) {
         </div>
       </div>
       <div style="text-align:right;font-family:Arial,sans-serif;font-size:12px;white-space:nowrap">
-        <b style="font-size:15px;color:#a57837">COMBINED BILL #C${pkg.id}</b><br>Date: ${esc(fmtDate(today()))}
+        <b style="font-size:15px;color:#a57837">COMBINED BILL NO: ${esc(pkg.bill_no || '—')}</b><br>Date: ${esc(fmtDate(today()))}
         ${pkg.status === 'cancelled' ? '<br><b style="color:#dc2626">CANCELLED</b>' : ''}
       </div>
     </div>

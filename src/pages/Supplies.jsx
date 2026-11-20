@@ -696,6 +696,7 @@ export default function Supplies() {
                                   isBulk: true,
                                   order: {
                                     rental_group_id: grp.groupId || grp.key,
+                                    bill_no: grp.items?.[0]?.bill_no || grp.bill_no,
                                     customer_name: grp.customer_name,
                                     phone: grp.phone,
                                     event_name: grp.event_name,

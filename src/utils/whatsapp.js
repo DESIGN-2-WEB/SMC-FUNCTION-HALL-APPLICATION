@@ -120,7 +120,7 @@ export function buildRoomMessage(b, settings, type = 'booking') {
   const when = type === 'check_out' ? 'soon' : checkedIn ? 'check_out' : 'check_in';
   const status = paymentStatus({ total: Number(b.total) || 0, paid: Number(b.paid) || 0, when });
   const details = [
-    ['Booking', `#${b.id}`],
+    ['Bill No', b.bill_no],
     ['Room', b.room_name],
     ['Check-in', `${fmtDate(b.check_in)}, ${t.checkIn}`],
     ['Check-out', `${fmtDate(b.check_out)}, ${t.checkOut} (${n} night${n === 1 ? '' : 's'})`],
@@ -170,7 +170,7 @@ export function buildHallMessage(b, settings, type = 'booking') {
   const event = b.event_type || 'function';
   const status = paymentStatus({ total: Number(b.total) || 0, paid: Number(b.paid) || 0, when: type === 'completed' ? 'soon' : 'event' });
   const details = [
-    ['Booking', `#${b.id}`],
+    ['Bill No', b.bill_no],
     ['Hall', b.hall_name],
     ['Event', b.event_type || 'Function'],
     ['Date', fmtDate(b.event_date)],
@@ -226,7 +226,7 @@ export function buildPackageMessage(pkg, settings, type = 'booking') {
   const balance = money(pkg.balance ?? total - (Number(pkg.advance_paid) || 0));
   const status = paymentStatus({ total, paid: total - balance, when: 'event' });
   const details = [
-    ['Combo', `#${pkg.id}`],
+    ['Bill No', pkg.bill_no],
     ['Event', pkg.event_type || 'Function'],
     ['Date', `${fmtDate(pkg.event_date)} (${timing(pkg.slot, settings)})`],
     ...(pkg.hall ? [['Hall', `${pkg.hall.hall_name} — ${inr(pkg.hall_amount || pkg.hall.rent)}`]] : []),
@@ -266,6 +266,7 @@ export function buildSupplyMessage(item, move, settings) {
     return compose(settings, {
       icon: '📦', name: move.customer_name, detailsTitle: 'Rental details',
       details: [
+        ['Bill No', move.bill_no],
         ['Item', `${name} × ${move.quantity} ${unit}`],
         ['Rate', `₹${move.rent_rate || 0} per ${unit}`],
         ['Rented on', fmtDate(move.rent_date)],
@@ -310,7 +311,7 @@ export function buildBulkRentalMessage(order, settings) {
   return compose(settings, {
     icon: '📦', name: order.customer_name, detailsTitle: `Items rented (${items.length})`,
     details: [
-      ['Order', order.rental_group_id || '—'],
+      ['Bill No', order.bill_no || order.rentals?.[0]?.bill_no],
       ...(order.event_name ? [['Function', order.event_name]] : []),
       ['Dispatched on', fmtDate(order.rent_date || today())],
       ...(order.expected_return_date ? [['Return by', fmtDate(order.expected_return_date)]] : []),

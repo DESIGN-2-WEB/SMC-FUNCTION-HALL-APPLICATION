@@ -135,7 +135,7 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
       subtitle={
         <span className="flex flex-wrap items-center gap-2">
           <Badge tone={meta.tone} dot>{meta.label}</Badge>
-          <span>Booking #{b.id} · by {b.created_by_name || '—'} · {fmtDateTime(b.created_at)}</span>
+          <span>{b.bill_no && <>Bill <b className="text-ink-800">{b.bill_no}</b> · </>}#{b.id} · by {b.created_by_name || '—'} · {fmtDateTime(b.created_at)}</span>
         </span>
       }
       footer={
@@ -508,7 +508,7 @@ function printReceipt(kind, b, settings) {
   const pays = b.payments.map(p => `<tr><td>${esc(fmtDate(p.paid_on))}</td><td>${esc(p.method)}${p.note ? ' · ' + esc(p.note) : ''}</td><td class="r">${esc(inr(p.amount))}</td></tr>`).join('');
   const w = window.open('', '_blank', 'width=760,height=900');
   if (!w) return;
-  w.document.write(`<!doctype html><html><head><title>Receipt #${b.id} - ${esc(propName)}</title><style>
+  w.document.write(`<!doctype html><html><head><title>Bill ${esc(b.bill_no || '')} - ${esc(propName)}</title><style>
     body{font-family:Georgia,serif;color:#0e1a2b;max-width:660px;margin:30px auto;padding:0 24px}
     h1{margin:0;font-size:24px;color:#0e1a2b}.banner{font-size:12px;color:#a57837;font-weight:bold;margin-top:2px}
     .sub{color:#444;font-size:12px;margin-top:2px;font-family:Arial,sans-serif}
@@ -533,7 +533,7 @@ function printReceipt(kind, b, settings) {
         </div>
       </div>
       <div style="text-align:right;font-family:Arial,sans-serif;font-size:12px;white-space:nowrap">
-        <b style="font-size:15px;color:#a57837">RECEIPT #${b.id}</b><br>
+        <b style="font-size:15px;color:#a57837">BILL NO: ${esc(b.bill_no || '—')}</b><br>
         Date: ${esc(fmtDate(today()))}
       </div>
     </div>

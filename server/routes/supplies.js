@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { all, get, log, run, tx, today } from '../db.js';
 import { fail, found, num, str } from '../lib/http.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { setBillNo } from '../lib/billno.js';
 
 const r = Router();
 export default r;
@@ -165,6 +166,7 @@ r.post('/rent-bulk', (req, res) => {
     let grandTotalRent = 0;
     const createdRentals = [];
 
+    let groupBillNo = null;
     for (const it of items) {
       const s = load(it.supply_id);
       if (it.quantity > s.quantity) {
@@ -188,6 +190,7 @@ r.post('/rent-bulk', (req, res) => {
         s.id, rental_group_id, customer_name, phone, event_name, rent_date, expected_return_date,
         it.quantity, rate, total_rent, advance_amount, payment_method, notes, req.user.id
       );
+      groupBillNo = setBillNo('supply_rentals', id, groupBillNo || undefined); // one bill for the whole order
 
       const moveNote = `Bulk rental [${rental_group_id}] to ${customer_name}${event_name ? ` (${event_name})` : ''}`;
       run("INSERT INTO stock_moves (supply_id, type, quantity, balance, note, created_by) VALUES (?, 'out', ?, ?, ?, ?)",
@@ -207,6 +210,7 @@ r.post('/rent-bulk', (req, res) => {
     return {
       ok: true,
       rental_group_id,
+      bill_no: groupBillNo,
       customer_name,
       phone,
       event_name,
@@ -294,6 +298,7 @@ r.post('/:id/rent', (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'rented', ?, ?)`,
       s.id, customer_name, phone, event_name, rent_date, expected_return_date, quantity, rent_rate, total_rent, advance_amount, payment_method, notes, req.user.id
     );
+    setBillNo('supply_rentals', id);
 
     const moveNote = `Rented to ${customer_name}${event_name ? ` (${event_name})` : ''}${notes ? ` · ${notes}` : ''}`;
     run("INSERT INTO stock_moves (supply_id, type, quantity, balance, note, created_by) VALUES (?, 'out', ?, ?, ?, ?)",
