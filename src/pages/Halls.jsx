@@ -19,7 +19,7 @@ import { useRowsReveal } from '../motion.js';
 
 const FILTERS = [
   { value: 'upcoming', label: 'Upcoming' },
-  { value: 'packages', label: '✨ Combos' },
+  { value: 'packages', label: 'Combos' },
   { value: 'tentative', label: 'Tentative' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
