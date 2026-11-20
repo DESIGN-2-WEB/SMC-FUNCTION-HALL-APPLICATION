@@ -88,3 +88,14 @@ input::-ms-clear {
   width: 0 !important;
   height: 0 !important;
 }
+
+/* Amount fields: no up/down arrows, so a stray click can't nudge a bill total */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

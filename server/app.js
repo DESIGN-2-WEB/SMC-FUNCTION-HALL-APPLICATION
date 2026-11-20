@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { IS_PRODUCTION } from './config.js';
@@ -35,6 +36,8 @@ const app = express();
 const hops = Number(process.env.TRUST_PROXY);
 app.set('trust proxy', Number.isInteger(hops) && hops > 0 ? hops : 'loopback');
 app.disable('x-powered-by');
+// Gzip pages, scripts and API replies: the app's main script shrinks to about a third
+app.use(compression());
 
 // Browser security headers for every response
 app.use((req, res, next) => {
@@ -80,8 +83,17 @@ app.use('/api', syncMiddleware, api);
 // The built React app is served from /dist
 const dist = join(ROOT, 'dist');
 if (existsSync(dist)) {
-  app.use(express.static(dist));
-  app.get('/{*path}', (req, res) => res.sendFile(join(dist, 'index.html')));
+  // Built scripts and styles have a content hash in their names, so browsers may keep them
+  // for a year; index.html is always re-checked so a new deploy is picked up at once
+  app.use(express.static(dist, {
+    setHeaders(res, path) {
+      res.setHeader('Cache-Control', /[\\/]assets[\\/]/.test(path) ? 'public, max-age=31536000, immutable' : 'no-cache');
+    },
+  }));
+  app.get('/{*path}', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(join(dist, 'index.html'));
+  });
 }
 
 app.use((err, req, res, next) => {

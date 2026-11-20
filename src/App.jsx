@@ -1,18 +1,21 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 import { AuthProvider, useAuth } from './auth.jsx';
 import { SettingsProvider } from './settings.jsx';
 import { PageLoader, UIProvider } from './components/ui.jsx';
 import Layout from './components/Layout.jsx';
-import Login from './pages/Login.jsx';
-import Dashboard from './pages/Dashboard.jsx';
-import Combos from './pages/Combos.jsx';
-import Rooms from './pages/Rooms.jsx';
-import Halls from './pages/Halls.jsx';
-import Supplies from './pages/Supplies.jsx';
-import Payments from './pages/Payments.jsx';
-import Users from './pages/Users.jsx';
-import Activity from './pages/Activity.jsx';
-import Settings from './pages/Settings.jsx';
+
+// Each page is downloaded only when it is first opened, so the first load stays small
+const Login = lazy(() => import('./pages/Login.jsx'));
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const Combos = lazy(() => import('./pages/Combos.jsx'));
+const Rooms = lazy(() => import('./pages/Rooms.jsx'));
+const Halls = lazy(() => import('./pages/Halls.jsx'));
+const Supplies = lazy(() => import('./pages/Supplies.jsx'));
+const Payments = lazy(() => import('./pages/Payments.jsx'));
+const Users = lazy(() => import('./pages/Users.jsx'));
+const Activity = lazy(() => import('./pages/Activity.jsx'));
+const Settings = lazy(() => import('./pages/Settings.jsx'));
 
 export default function App() {
   return (
@@ -31,7 +34,7 @@ export default function App() {
 function Shell() {
   const { user, ready, isAdmin } = useAuth();
   if (!ready) return <PageLoader />;
-  if (!user) return <Login />;
+  if (!user) return <Suspense fallback={<PageLoader />}><Login /></Suspense>;
   return (
     <Routes>
       <Route element={<Layout />}>

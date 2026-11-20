@@ -63,40 +63,18 @@ function RoomPaymentFields({ f, set, checkIn }) {
               className="bg-white font-medium"
             />
           </Field>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {total > 0 && (
             <button
               type="button"
-              onClick={() => set('advance', '')}
+              onClick={() => set('advance', adv === total ? '' : total)}
               className={cn(
-                'cursor-pointer rounded-md px-2 py-0.5 text-[11px] font-medium transition',
-                !adv ? 'bg-ink-900 text-white' : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-100'
+                'mt-1.5 cursor-pointer rounded-md px-2 py-0.5 text-[11px] font-medium transition',
+                adv === total ? 'bg-ink-900 text-white' : 'border border-stone-200 bg-white text-stone-600 hover:bg-stone-100'
               )}
             >
-              Nothing yet (₹0)
+              {adv === total ? 'Full amount entered (tap to clear)' : `Full amount (${inr(total)})`}
             </button>
-            {total > 1000 && (
-              <button
-                type="button"
-                onClick={() => set('advance', Math.min(1000, total))}
-                className={cn(
-                  'cursor-pointer rounded-md px-2 py-0.5 text-[11px] font-medium transition',
-                  adv === Math.min(1000, total) ? 'bg-ink-900 text-white' : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-100'
-                )}
-              >
-                ₹1,000
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => set('advance', total)}
-              className={cn(
-                'cursor-pointer rounded-md px-2 py-0.5 text-[11px] font-medium transition',
-                adv === total && total > 0 ? 'bg-ink-900 text-white' : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-100'
-              )}
-            >
-              Full amount ({inr(total)})
-            </button>
-          </div>
+          )}
         </div>
 
         <Field label="Payment method">
@@ -172,6 +150,7 @@ export function RoomBookingForm({ booking, rooms, defaultRoomId, defaultDate, on
 
   const n = nights(f.check_in, f.check_out);
   const discAmount = Number(f.discount) || 0;
+  const calcTotal = Math.max(0, n * Number(f.rate || 0) - Math.max(0, discAmount));
 
   return (
     <Modal
@@ -287,8 +266,18 @@ export function RoomBookingForm({ booking, rooms, defaultRoomId, defaultDate, on
         <Field label="Discount (₹)" hint={discAmount > 0 ? `Discount applied: −${inr(discAmount)}` : 'Flat discount on stay'}>
           <Input type="number" min="0" placeholder="0" value={f.discount} onChange={e => set('discount', e.target.value)} />
         </Field>
-        <Field label="Room bill total (₹)" hint={autoTotal ? `Bill: ${n} night${n === 1 ? '' : 's'} × ${inr(f.rate)}${discAmount > 0 ? ` − ${inr(discAmount)} discount` : ''}` : 'Custom amount'} className="sm:col-span-2">
-          <Input type="number" min="0" value={f.total} onChange={e => { setAutoTotal(false); set('total', e.target.value); }} />
+        <Field label="Room bill total (₹)" className="sm:col-span-2"
+          hint={autoTotal
+            ? `Bill: ${n} night${n === 1 ? '' : 's'} × ${inr(f.rate)}${discAmount > 0 ? ` − ${inr(discAmount)} discount` : ''}`
+            : `Custom amount · calculated bill would be ${inr(calcTotal)}`}>
+          <div className="flex gap-2">
+            <Input type="number" min="0" value={f.total} onChange={e => { setAutoTotal(false); set('total', e.target.value); }} />
+            {!autoTotal && (
+              <Button type="button" size="sm" variant="outline" onClick={() => { setAutoTotal(true); setF(prev => ({ ...prev, total: calcTotal })); }}>
+                Recalculate
+              </Button>
+            )}
+          </div>
         </Field>
         {!editing && <RoomPaymentFields f={f} set={set} checkIn={!isReservation} />}
         <Field label="Notes" className="sm:col-span-2"><Textarea value={f.notes} onChange={e => set('notes', e.target.value)} placeholder="Extra bed, early check-in, etc." /></Field>

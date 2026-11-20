@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
   BedDouble, ChevronLeft, ChevronRight, History, KeyRound, LayoutDashboard, Layers, LogOut, Menu, Package, PartyPopper, SlidersHorizontal, UserRound, Users, Wallet, X,
@@ -7,7 +7,7 @@ import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
 import { initials } from '../utils.js';
 import { api } from '../api.js';
-import { Avatar, Badge, Button, Field, Form, Input, Modal, cn, useUI } from './ui.jsx';
+import { Avatar, Badge, Button, Field, Form, Input, Modal, PageLoader, cn, useUI } from './ui.jsx';
 import AccountModal from './AccountModal.jsx';
 import ClickSpark from './reactbits/ClickSpark.jsx';
 import { usePageEnter, useStaggerIn } from '../motion.js';
@@ -192,7 +192,9 @@ export default function Layout() {
 
       <main className={cn('transition-all duration-300 ease-in-out', collapsed ? 'lg:pl-20' : 'lg:pl-68')}>
         <div ref={pageRef} className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
-          <Outlet />
+          <Suspense fallback={<PageLoader />}>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
 

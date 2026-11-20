@@ -14,3 +14,6 @@ secret.key
 .vscode
 *.log
 scratch/
+
+# Test browser logs and screenshots
+.playwright-mcp/
