@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { CircleAlert, CircleCheck, LoaderCircle, Trash2, TriangleAlert, X } from 'lucide-react';
 import { initials } from '../utils.js';
+import CountUp from './reactbits/CountUp.jsx';
 
 export const cn = (...c) => c.filter(Boolean).join(' ');
 
@@ -94,16 +95,25 @@ const ACCENTS = {
   violet: 'bg-violet-50 text-violet-600',
 };
 
-export function StatCard({ icon: Icon, label, value, sub, accent = 'ink', className }) {
+/**
+ * Summary card. Pass `count` (a number) to have it count up from 0, formatted with
+ * `format` (for example inr); otherwise `value` is shown as is.
+ */
+export function StatCard({ icon: Icon, label, value, count, format, sub, accent = 'ink', className }) {
+  const counting = typeof count === 'number' && Number.isFinite(count);
   return (
-    <div className={cn('card animate-rise p-5', className)}>
+    <div className={cn('card group p-5 transition duration-300 hover:-translate-y-0.5 hover:shadow-lg', className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">{label}</p>
-          <p className="mt-2 truncate font-display text-[28px] leading-tight font-semibold text-ink-900">{value}</p>
+          <p className="mt-2 truncate font-display text-[28px] leading-tight font-semibold text-ink-900">
+            {counting ? (
+              <CountUp to={count} duration={1.3} trigger="load" formatter={v => (format ? format(Math.round(v)) : Math.round(v).toLocaleString('en-IN'))} />
+            ) : value}
+          </p>
           {sub && <p className="mt-1 text-xs text-stone-500">{sub}</p>}
         </div>
-        <div className={cn('grid h-11 w-11 shrink-0 place-items-center rounded-2xl', ACCENTS[accent])}>
+        <div className={cn('grid h-11 w-11 shrink-0 place-items-center rounded-2xl transition duration-300 group-hover:scale-110 group-hover:rotate-3', ACCENTS[accent])}>
           <Icon size={20} />
         </div>
       </div>

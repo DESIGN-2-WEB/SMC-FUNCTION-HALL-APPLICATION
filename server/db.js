@@ -2,13 +2,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash, randomBytes } from 'node:crypto';
-import { DEMO, ON_VERCEL } from './config.js';
+import { randomBytes } from 'node:crypto';
+import { IS_PRODUCTION } from './config.js';
 import { SYNC_ON } from './mysql.js';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-// Vercel functions can only write to /tmp, which is temporary — fine for the demo
-const dataDir = process.env.DATA_DIR || (ON_VERCEL ? '/tmp/penta-kedarnath' : join(ROOT, 'data'));
+const dataDir = process.env.DATA_DIR || join(ROOT, 'data');
 mkdirSync(dataDir, { recursive: true });
 
 // With MySQL configured, all data comes from MySQL: the working copy lives only in
@@ -21,12 +20,13 @@ export const secret = loadSecret();
 
 /** The key that signs logins. Every server instance must use the same one. */
 function loadSecret() {
-  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
-  if (ON_VERCEL) {
-    const project = process.env.VERCEL_PROJECT_ID || process.env.VERCEL_PROJECT_PRODUCTION_URL || 'penta-kedarnath';
-    return createHash('sha256').update(`penta-kedarnath:${project}`).digest('hex');
+  if (process.env.JWT_SECRET) {
+    if (IS_PRODUCTION && process.env.JWT_SECRET.length < 32)
+      console.warn('[auth] JWT_SECRET is short. Use at least 32 random characters.');
+    return process.env.JWT_SECRET;
   }
-  // Locally: persist a random key so logins survive server restarts
+  if (IS_PRODUCTION) console.warn('[auth] JWT_SECRET is not set: using a key file, so logins may reset on redeploy.');
+  // Persist a random key so logins survive server restarts
   const file = join(dataDir, 'secret.key');
   if (!existsSync(file)) writeFileSync(file, randomBytes(48).toString('hex'));
   return readFileSync(file, 'utf8').trim();

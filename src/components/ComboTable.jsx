@@ -1,11 +1,13 @@
 import { ChevronRight } from 'lucide-react';
 import { Badge, cn } from './ui.jsx';
 import { SLOTS, fmtDate, inr, relDay } from '../utils.js';
+import { useRowsReveal } from '../motion.js';
 
 const slotLabel = s => SLOTS[s] || (s === 'half' ? 'Half day' : 'Full day');
 
 /** List of combo bookings (hall + rooms + supplies on one bill). */
 export default function ComboTable({ combos, onOpen }) {
+  const rowsRef = useRowsReveal([combos.length, combos]);
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -21,7 +23,7 @@ export default function ComboTable({ combos, onOpen }) {
             <th className="th text-right w-16">Action</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-stone-100">
+        <tbody ref={rowsRef} className="divide-y divide-stone-100">
           {combos.map(c => {
             const total = Number(c.grand_total ?? c.total_amount) || 0;
             const due = Number(c.balance ?? total - c.advance_paid) || 0;

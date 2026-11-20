@@ -40,16 +40,6 @@ export const fmtDateTime = s =>
 export const fmtTime = s =>
   s ? new Date(s.replace(' ', 'T')).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : '—';
 
-export const fmtDuration = sec => {
-  const s = Math.max(0, Math.round(Number(sec) || 0));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  const remM = m % 60;
-  return remM ? `${h}h ${remM}m` : `${h}h`;
-};
-
 export const fmtDurationWords = sec => {
   const s = Math.max(0, Math.round(Number(sec) || 0));
   if (s < 60) return `${s} sec`;
@@ -92,17 +82,6 @@ export const ROOM_STATE = {
   occupied: { label: 'Occupied', tone: 'rose' },
   arriving: { label: 'Reserved', tone: 'blue' },
   maintenance: { label: 'Maintenance', tone: 'amber' },
-};
-
-export const PROPERTY = {
-  name: 'SMC Function Hall (A/C)',
-  shortName: 'SMC Function Hall',
-  tagline: 'Kalyana Mandapam & Function Hall',
-  banner: 'Penta Jayashankararao',
-  address: 'Next to BOI (Bank of India), K.T. Road, Palasa – Kasibugga',
-  phones: ['94411 17278', '94410 89616'],
-  contactDisplay: '94411 17278 / 94410 89616',
-  facilities: 'A/C halls, parking, rooms and lift available',
 };
 
 export const GENERATOR_RATES = {

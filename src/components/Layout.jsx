@@ -9,6 +9,8 @@ import { initials } from '../utils.js';
 import { api } from '../api.js';
 import { Avatar, Badge, Button, Field, Form, Input, Modal, cn, useUI } from './ui.jsx';
 import AccountModal from './AccountModal.jsx';
+import ClickSpark from './reactbits/ClickSpark.jsx';
+import { usePageEnter, useStaggerIn } from '../motion.js';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -53,6 +55,8 @@ export default function Layout() {
     }
   });
   const { pathname } = useLocation();
+  const pageRef = usePageEnter(pathname);
+  const navRef = useStaggerIn('a');
 
   useEffect(() => { setOpen(false); window.scrollTo(0, 0); }, [pathname]);
 
@@ -66,7 +70,7 @@ export default function Layout() {
     });
   };
 
-  const renderSidebar = isCollapsed => (
+  const renderSidebar = (isCollapsed, ref) => (
     <div className="relative flex h-full flex-col overflow-hidden bg-ink-900 text-white select-none">
       <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-gold-400/10 blur-3xl" />
       <div className="pointer-events-none absolute -right-28 bottom-10 h-64 w-64 rounded-full bg-sky-400/5 blur-3xl" />
@@ -77,7 +81,7 @@ export default function Layout() {
       </div>
 
       {/* Navigation Links */}
-      <nav className={cn('relative flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden transition-all duration-300', isCollapsed ? 'px-2' : 'px-3')}>
+      <nav ref={ref} className={cn('relative flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden transition-all duration-300', isCollapsed ? 'px-2' : 'px-3')}>
         {NAV.filter(n => !n.admin || isAdmin).map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
@@ -147,6 +151,7 @@ export default function Layout() {
   );
 
   return (
+    <ClickSpark sparkColor={['#d4ad5e', '#e7c98a', '#ffffff']} sparkSize={9} sparkRadius={22} sparkCount={8} duration={420} shape="line">
     <div className="min-h-screen">
       <aside className={cn('fixed inset-y-0 left-0 z-30 hidden transition-all duration-300 ease-in-out lg:block', collapsed ? 'w-20' : 'w-68')}>
         {/* Floating Collapse / Expand Edge Button */}
@@ -160,7 +165,7 @@ export default function Layout() {
           {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
 
-        {renderSidebar(collapsed)}
+        {renderSidebar(collapsed, navRef)}
       </aside>
 
       {open && (
@@ -186,12 +191,13 @@ export default function Layout() {
       </header>
 
       <main className={cn('transition-all duration-300 ease-in-out', collapsed ? 'lg:pl-20' : 'lg:pl-68')}>
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+        <div ref={pageRef} className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
           <Outlet />
         </div>
       </main>
 
       {accountOpen && <AccountModal onClose={() => setAccountOpen(false)} />}
     </div>
+    </ClickSpark>
   );
 }

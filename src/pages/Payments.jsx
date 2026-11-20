@@ -6,6 +6,7 @@ import { useAuth } from '../auth.jsx';
 import { Badge, Button, Card, EmptyState, Field, PageHeader, StatCard, cn } from '../components/ui.jsx';
 import { DatePicker } from '../components/pickers.jsx';
 import { METHODS, addDays, fmtDate, inr, today } from '../utils.js';
+import { useRowsReveal } from '../motion.js';
 
 const monthStart = d => `${d.slice(0, 8)}01`;
 const prevMonth = () => {
@@ -30,6 +31,7 @@ export default function Payments() {
   ];
 
   const list = data || [];
+  const rowsRef = useRowsReveal([list.length, data]);
   const sum = f => list.filter(f).reduce((s, p) => s + p.amount, 0);
   const total = sum(() => true);
 
@@ -61,9 +63,9 @@ export default function Payments() {
       </Card>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <StatCard icon={Wallet} label="Total collected" value={inr(total)} sub={`${list.length} payment${list.length === 1 ? '' : 's'}`} />
-        <StatCard icon={BedDouble} label="Rooms" value={inr(sum(p => p.kind === 'room'))} accent="blue" />
-        <StatCard icon={PartyPopper} label="Halls" value={inr(sum(p => p.kind === 'hall'))} accent="gold" />
+        <StatCard icon={Wallet} label="Total collected" count={total} format={inr} sub={`${list.length} payment${list.length === 1 ? '' : 's'}`} />
+        <StatCard icon={BedDouble} label="Rooms" count={sum(p => p.kind === 'room')} format={inr} accent="blue" />
+        <StatCard icon={PartyPopper} label="Halls" count={sum(p => p.kind === 'hall')} format={inr} accent="gold" />
       </div>
 
       {total > 0 && (
@@ -82,7 +84,7 @@ export default function Payments() {
               <thead className="border-b border-stone-100 bg-stone-50/60">
                 <tr><th className="th">Date</th><th className="th">Received from</th><th className="th">For</th><th className="th">Method</th><th className="th">By</th><th className="th text-right">Amount</th>{isAdmin && <th className="th" />}</tr>
               </thead>
-              <tbody className="divide-y divide-stone-100">
+              <tbody ref={rowsRef} className="divide-y divide-stone-100">
                 {list.map(p => (
                   <tr key={p.id} className="transition hover:bg-gold-50/40">
                     <td className="td whitespace-nowrap">{fmtDate(p.paid_on)}</td>

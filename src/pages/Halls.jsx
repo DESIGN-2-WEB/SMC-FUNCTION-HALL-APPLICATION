@@ -15,6 +15,7 @@ import {
   Badge, Button, Card, EmptyState, Field, Form, Input, Modal, PageHeader, PageLoader, Segmented, Textarea, cn, useUI,
 } from '../components/ui.jsx';
 import { HALL_STATUS, SLOTS, fmtDate, inr, relDay, today } from '../utils.js';
+import { useRowsReveal } from '../motion.js';
 
 const FILTERS = [
   { value: 'upcoming', label: 'Upcoming' },
@@ -108,6 +109,8 @@ export default function Halls() {
   const deleteHall = h => remove(`/halls/${h.id}`, {
     title: `Delete ${h.name}?`, message: 'The hall will be removed permanently.', success: 'Hall deleted', done: refresh,
   });
+  // Hooks must run on every render, so this sits before the loading return below
+  const rowsRef = useRowsReveal([bookings.data, filter]);
   if (!halls.data) return <PageLoader />;
 
   // Upcoming list reads best in date order
@@ -442,7 +445,7 @@ export default function Halls() {
                   <th className="th text-right w-16">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-stone-100">
+              <tbody ref={rowsRef} className="divide-y divide-stone-100">
                 {list.map(b => {
                   const due = b.total - b.paid;
                   return (

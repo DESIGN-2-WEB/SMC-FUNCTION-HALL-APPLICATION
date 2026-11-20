@@ -6,6 +6,7 @@ import {
 import { useApi } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import OccupancyCalendar from '../components/OccupancyCalendar.jsx';
+import SplitText from '../components/reactbits/SplitText.jsx';
 import { Badge, Button, Card, CardHeader, EmptyState, PageLoader, StatCard, cn } from '../components/ui.jsx';
 import { HALL_STATUS, ROOM_STATE, SLOTS, fmtDate, fmtDateTime, fmtShort, inr, relDay } from '../utils.js';
 
@@ -31,7 +32,8 @@ export default function Dashboard() {
         <div className="relative flex flex-wrap items-end justify-between gap-6">
           <div>
             <p className="text-xs font-semibold tracking-[0.25em] text-gold-300 uppercase">{fmtDate(data.today, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
-            <h1 className="mt-2 font-display text-3xl font-semibold sm:text-4xl">{greet}, {user.name.split(' ')[0]}</h1>
+            <SplitText text={`${greet}, ${user.name.split(' ')[0]}`} tag="h1" textAlign="left" splitType="chars" delay={30} duration={0.8} trigger="load"
+              className="mt-2 font-display text-3xl font-semibold sm:text-4xl" />
             <p className="mt-2 text-sm text-ink-200">
               {occupied} of {data.rooms.length} rooms occupied · {eventsToday ? `${eventsToday} event${eventsToday > 1 ? 's' : ''} today` : 'No hall events today'}
             </p>
@@ -47,9 +49,9 @@ export default function Dashboard() {
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={BedDouble} label="Rooms occupied" value={`${occupied} / ${data.rooms.length}`} sub={`${data.arrivals.length} arrival${data.arrivals.length === 1 ? '' : 's'} pending`} />
-        <StatCard icon={PartyPopper} label="Events today" value={eventsToday} sub={`${data.upcoming.length} upcoming`} accent="violet" />
-        <StatCard icon={Wallet} label="Collected this month" value={inr(data.collectedMonth)} sub={`${inr(data.collectedToday)} today`} accent="green" />
-        <StatCard icon={IndianRupee} label="Pending dues" value={inr(data.dues)} sub="Across all active bookings" accent="rose" />
+        <StatCard icon={PartyPopper} label="Events today" count={eventsToday} sub={`${data.upcoming.length} upcoming`} accent="violet" />
+        <StatCard icon={Wallet} label="Collected this month" count={data.collectedMonth} format={inr} sub={`${inr(data.collectedToday)} today`} accent="green" />
+        <StatCard icon={IndianRupee} label="Pending dues" count={data.dues} format={inr} sub="Across all active bookings" accent="rose" />
       </div>
 
       <OccupancyCalendar />

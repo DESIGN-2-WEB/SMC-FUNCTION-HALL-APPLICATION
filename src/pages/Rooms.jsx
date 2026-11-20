@@ -10,6 +10,7 @@ import {
 } from '../components/ui.jsx';
 import { Select } from '../components/pickers.jsx';
 import { ROOM_STATE, ROOM_STATUS, fmtShort, inr, nights } from '../utils.js';
+import { useRowsReveal } from '../motion.js';
 
 const FILTERS = [
   { value: 'active', label: 'Active' },
@@ -29,6 +30,7 @@ export default function Rooms() {
   const [q, setQ] = useState('');
   const dq = useDebounced(q);
   const bookings = useApi(`/room-bookings?status=${filter}&q=${encodeURIComponent(dq)}`);
+  const rowsRef = useRowsReveal([bookings.data]);
   const [form, setForm] = useState(null);
   const [detailId, setDetailId] = useState(null);
   const [roomForm, setRoomForm] = useState(null);
@@ -89,7 +91,7 @@ export default function Rooms() {
                   <th className="th text-right w-16">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-stone-100">
+              <tbody ref={rowsRef} className="divide-y divide-stone-100">
                 {bookings.data.map(b => {
                   const due = b.total - b.paid;
                   const n = nights(b.check_in, b.check_out);

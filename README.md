@@ -91,7 +91,6 @@ to temporary storage.
 ## Code layout
 
 ```
-api/index.js          Vercel serverless entry (wraps server/app.js)
 server/
   app.js              Express app: API, static files, error handler
   index.js            local server (listens on PORT, default 4000)

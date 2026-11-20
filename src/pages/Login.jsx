@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BedDouble, Eye, EyeOff, Lock, Package, PartyPopper, UserRound } from 'lucide-react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
@@ -6,6 +6,9 @@ import { useSettings } from '../settings.jsx';
 import { Brand } from '../components/Layout.jsx';
 import { Button, Form } from '../components/ui.jsx';
 import { Select } from '../components/pickers.jsx';
+import VantaBackground from '../components/VantaBackground.jsx';
+import SplitText from '../components/reactbits/SplitText.jsx';
+import { gsap, reducedMotion, useGSAP } from '../motion.js';
 
 const FEATURES = [
   [BedDouble, 'Suite & AC rooms', 'Bookings, check-ins and payments'],
@@ -22,6 +25,17 @@ export default function Login() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const panelRef = useRef(null);
+
+  // Showcase text and feature cards rise in one after another
+  useGSAP(() => {
+    if (reducedMotion()) return;
+    // fromTo with explicit end values: from() would read the end state from the current
+    // style, which CSS transitions on these elements can still be holding at 0
+    const done = { clearProps: 'opacity,visibility,transform' };
+    gsap.fromTo('[data-rise]', { autoAlpha: 0, y: 24 }, { autoAlpha: 1, y: 0, duration: 0.7, stagger: 0.12, delay: 0.15, ...done });
+    gsap.fromTo('[data-feature]', { autoAlpha: 0, x: -24 }, { autoAlpha: 1, x: 0, duration: 0.6, stagger: 0.1, delay: 0.55, ...done });
+  }, { scope: panelRef });
 
   useEffect(() => {
     api('/auth/users')
@@ -46,7 +60,8 @@ export default function Login() {
   return (
     <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
       {/* Showcase panel */}
-      <div className="relative hidden overflow-hidden bg-ink-900 lg:flex lg:flex-col lg:justify-between lg:p-14">
+      <div ref={panelRef} className="relative hidden overflow-hidden bg-ink-900 lg:flex lg:flex-col lg:justify-between lg:p-14">
+        <VantaBackground className="absolute inset-0 opacity-60" />
         {/* Slow turn in opposite directions; still for people who turn off motion in their device settings */}
         <div className="pointer-events-none absolute -right-40 -bottom-40 h-[640px] w-[640px] motion-safe:animate-orbit">
           <Mandala className="h-full w-full text-gold-400/15" />
@@ -63,13 +78,13 @@ export default function Login() {
           )}
         </div>
         <div className="relative my-auto max-w-md py-4">
-          <p className="mb-2.5 text-xs font-semibold tracking-[0.3em] text-gold-300 uppercase">
+          <p data-rise className="mb-2.5 text-xs font-semibold tracking-[0.3em] text-gold-300 uppercase">
             Management Suite
           </p>
-          <h1 className="font-display text-4xl leading-[1.25] font-semibold text-white">
+          <h1 data-rise className="font-display text-4xl leading-[1.25] font-semibold text-white">
             Every celebration, <span className="text-gold-300 italic">beautifully</span> managed.
           </h1>
-          <p className="mt-3.5 text-xs leading-relaxed text-ink-200/90">
+          <p data-rise className="mt-3.5 text-xs leading-relaxed text-ink-200/90">
             {[
               settings.facilities || 'A/C halls, parking, rooms and lift available',
               settings.address || 'Next to BOI (Bank of India), K.T. Road, Palasa – Kasibugga',
@@ -80,7 +95,7 @@ export default function Login() {
           </p>
           <div className="mt-6 grid gap-2.5">
             {FEATURES.map(([Icon, title, sub]) => (
-              <div key={title} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 py-2.5 px-3.5 backdrop-blur transition hover:bg-white/8">
+              <div key={title} data-feature className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 py-2.5 px-3.5 backdrop-blur transition-colors hover:bg-white/8">
                 <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gold-400/15 text-gold-300">
                   <Icon size={16} />
                 </div>
@@ -101,7 +116,8 @@ export default function Login() {
       <div className="flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm animate-rise">
           <div className="mb-10 lg:hidden"><Brand light={false} /></div>
-          <h2 className="font-display text-3xl font-semibold text-ink-900">Welcome back</h2>
+          <SplitText text="Welcome back" tag="h2" textAlign="left" splitType="chars" delay={35} duration={0.9} trigger="load"
+            className="font-display text-3xl font-semibold text-ink-900" />
           <p className="mt-2 text-sm text-stone-500">Choose your login and enter your password.</p>
 
           <Form onSubmit={submit} className="mt-8 space-y-4">

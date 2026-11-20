@@ -257,28 +257,28 @@ export default function Supplies() {
         <StatCard
           icon={Boxes}
           label="Total Inventory"
-          value={totalUnits.toLocaleString('en-IN')}
+          count={totalUnits}
           sub={`${items.length} equipment items owned`}
           accent="ink"
         />
         <StatCard
           icon={Handshake}
           label="With Functions"
-          value={rentedUnits.toLocaleString('en-IN')}
+          count={rentedUnits}
           sub={`${activeRentals.length} active rentals`}
           accent="amber"
         />
         <StatCard
           icon={Package}
           label="Available Stock"
-          value={availableUnits.toLocaleString('en-IN')}
+          count={availableUnits}
           sub="Ready to issue to events"
           accent="green"
         />
         <StatCard
           icon={Wallet}
           label="Active Rent Value"
-          value={inr(activeRentalsValue)}
+          count={activeRentalsValue} format={inr}
           sub="Pending equipment rent"
           accent="gold"
         />

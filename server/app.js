@@ -1,7 +1,7 @@
 import express from 'express';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ON_VERCEL } from './config.js';
+import { IS_PRODUCTION } from './config.js';
 import { ROOT } from './db.js';
 import { applyDefaults, migrate, seed } from './schema.js';
 import { SYNC_ON, commit, installSyncTriggers, isStale, lastSeq, pullAll, syncMiddleware } from './sync.js';
@@ -33,12 +33,42 @@ const app = express();
 // TRUST_PROXY = number of proxy hops in front of the app (e.g. 1 or 2 on a hosted platform);
 // without it only local proxies are trusted, so a visitor can't fake their address.
 const hops = Number(process.env.TRUST_PROXY);
-app.set('trust proxy', Number.isInteger(hops) && hops > 0 ? hops : ON_VERCEL ? true : 'loopback');
+app.set('trust proxy', Number.isInteger(hops) && hops > 0 ? hops : 'loopback');
+app.disable('x-powered-by');
+
+// Browser security headers for every response
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff', // never guess file types
+    'X-Frame-Options': 'DENY', // the app can't be shown inside another site (clickjacking)
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+    'Cross-Origin-Opener-Policy': 'same-origin-allow-popups', // receipts open in a popup
+    // Only this site's own scripts may run; styles and fonts also from Google Fonts.
+    // 'unsafe-inline' styles are needed by animation libraries and the printed receipts.
+    'Content-Security-Policy': [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: blob:",
+      "connect-src 'self'",
+      "worker-src 'self' blob:",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ].join('; '),
+    ...(req.secure ? { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' } : {}),
+  });
+  next();
+});
+
 app.use(express.json({ limit: '1mb' }));
 
 // A hosted copy without a database would keep data only until it restarts. Refuse to run
 // rather than lose bookings (e.g. an old Vercel deployment left online after the move).
-const NO_DATABASE = !SYNC_ON && (ON_VERCEL || process.env.NODE_ENV === 'production');
+const NO_DATABASE = !SYNC_ON && (IS_PRODUCTION || !!process.env.VERCEL);
 if (NO_DATABASE) console.error('[mysql] No MySQL database configured: the API is disabled on this server.');
 app.use('/api', (req, res, next) =>
   NO_DATABASE
@@ -47,7 +77,7 @@ app.use('/api', (req, res, next) =>
 
 app.use('/api', syncMiddleware, api);
 
-// Locally the built React app is served from /dist (on Vercel, its CDN serves it)
+// The built React app is served from /dist
 const dist = join(ROOT, 'dist');
 if (existsSync(dist)) {
   app.use(express.static(dist));

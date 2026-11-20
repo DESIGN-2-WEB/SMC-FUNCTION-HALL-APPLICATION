@@ -53,9 +53,9 @@ export default function Combos() {
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard icon={Layers} label="Active combos" value={active.length} sub={`${list.length} shown`} />
-        <StatCard icon={Wallet} label="Combined bills" value={inr(value)} sub="Active combos" accent="green" />
-        <StatCard icon={IndianRupee} label="Pending dues" value={inr(due)} sub="Still to collect" accent="rose" />
+        <StatCard icon={Layers} label="Active combos" count={active.length} sub={`${list.length} shown`} />
+        <StatCard icon={Wallet} label="Combined bills" count={value} format={inr} sub="Active combos" accent="green" />
+        <StatCard icon={IndianRupee} label="Pending dues" count={due} format={inr} sub="Still to collect" accent="rose" />
       </div>
 
       <Card className="mt-6">

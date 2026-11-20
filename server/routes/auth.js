@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { DEMO } from '../config.js';
 import { all, get, log, run } from '../db.js';
 import { endSessions, publicUser, requireAuth, signToken } from '../middleware/auth.js';
 
@@ -34,7 +33,6 @@ const pruneFailures = now => {
   for (const [k, f] of failures) if (now - f.first >= WINDOW) failures.delete(k);
 };
 
-r.get('/demo', (req, res) => res.json({ demo: DEMO }));
 
 // Names for the login dropdown (no passwords or ids exposed)
 r.get('/users', (req, res) =>
