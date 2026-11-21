@@ -1,17 +1,21 @@
 import { useState } from 'react';
-import { BedDouble, Boxes, CreditCard, Landmark, Printer } from 'lucide-react';
+import { BedDouble, Boxes, CreditCard, Landmark, Printer, Zap } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import { Badge, Button, Card, Field, Form, Input, Modal, cn, useUI } from './ui.jsx';
 import { esc, fmtDate, fmtDateTime, inr, nights, slotName, today } from '../utils.js';
 import { useSettings } from '../settings.jsx';
+import { useAuth } from '../auth.jsx';
+import { ExtraChargesForm } from './ExtraChargesForm.jsx';
 import { Select } from './pickers.jsx';
 import { WhatsAppIcon } from './WhatsAppModal.jsx';
 
 export default function PackageDetailModal({ packageId, onClose, onRefresh, onShareWa }) {
   const { toast } = useUI();
   const { settings } = useSettings();
+  const { isAdmin } = useAuth();
   const { data: pkg, reload } = useApi(`/packages/${packageId}`);
+  const [chargesOpen, setChargesOpen] = useState(false);
 
   // Payment State
   const [payModal, setPayModal] = useState(false);
@@ -26,6 +30,12 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
   const isCancelled = pkg.status === 'cancelled';
   const balance = Number(pkg.balance) || 0;
   const grandTotal = Number(pkg.grand_total ?? pkg.total_amount) || 0;
+  // Power & generator for the combo's hall: staff from the event day while the hall booking is
+  // open, admin any time (same rule as the hall booking itself)
+  const hall = pkg.hall;
+  const hasExtras = hall && (Number(hall.power_amount) > 0 || Number(hall.generator_amount) > 0);
+  const canAddExtras = hall && !isCancelled && hall.status !== 'cancelled'
+    && (isAdmin || (['tentative', 'confirmed'].includes(hall.status) && hall.event_date <= today()));
 
   const handlePayment = async e => {
     e?.preventDefault?.();
@@ -76,7 +86,7 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
         subtitle={`${pkg.customer_name} · ${pkg.phone} · ${fmtDate(pkg.event_date)} (${slotLabel(pkg.slot)})`}
         onClose={onClose}
         footer={
-          <div className="flex w-full items-center justify-between gap-2">
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
             <div>
               {!isCancelled && (
                 <Button
@@ -89,7 +99,7 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
                 </Button>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Button variant="outline" icon={Printer} onClick={() => printComboBill(pkg, settings)}>
                 Print combined bill
               </Button>
@@ -189,6 +199,21 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
                 </div>
                 <Badge tone="green">Hall Booked</Badge>
               </div>
+              {chargesOpen ? (
+                <ExtraChargesForm
+                  booking={pkg.hall}
+                  billTotal={grandTotal}
+                  billPaid={Number(pkg.advance_paid) || 0}
+                  onCancel={() => setChargesOpen(false)}
+                  onDone={async () => { setChargesOpen(false); await reload(); onRefresh?.(); }}
+                />
+              ) : canAddExtras ? (
+                <Button size="sm" variant="outline" icon={Zap} onClick={() => setChargesOpen(true)}>
+                  {hasExtras ? 'Change power & generator bill' : 'Add power & generator bill'}
+                </Button>
+              ) : !isCancelled && hall.status !== 'completed' && (
+                <p className="text-xs text-stone-500">Power & generator bill can be added from {fmtDate(hall.event_date)}.</p>
+              )}
               {Number(pkg.hall.power_amount) > 0 && (
                 <div className="flex items-center justify-between text-xs text-stone-600">
                   <span>Power bill ({pkg.hall.power_units} units @ ₹{pkg.hall.power_rate}/unit)</span>

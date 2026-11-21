@@ -32,18 +32,25 @@ r.get('/dashboard', (req, res) => {
       ...h,
       today: all(`SELECT id FROM hall_bookings WHERE hall_id = ? AND event_date = ? AND status IN ('tentative','confirmed')`, h.id, t),
     })),
-    upcoming: all(`SELECT b.id, b.customer_name, b.event_type, b.event_date, b.slot, b.guests, b.status, b.total, b.paid, h.name AS hall_name
-                   FROM hall_bookings b JOIN halls h ON h.id = b.hall_id
+    // A combo's hall and rooms show what is due on the whole combo
+    upcoming: all(`SELECT b.id, b.customer_name, b.event_type, b.event_date, b.slot, b.guests, b.status, h.name AS hall_name,
+                     COALESCE(pk.total_amount + b.power_amount + b.generator_amount, b.total) AS total, COALESCE(pk.advance_paid, b.paid) AS paid
+                   FROM hall_bookings b JOIN halls h ON h.id = b.hall_id LEFT JOIN event_packages pk ON pk.id = b.package_id
                    WHERE b.event_date >= ? AND b.status IN ('tentative','confirmed') ORDER BY b.event_date, b.slot LIMIT 6`, t),
     arrivals: all(`SELECT b.id, b.guest_name, b.check_in, r.name AS room_name FROM room_bookings b
                    JOIN rooms r ON r.id = b.room_id WHERE b.status = 'reserved' AND b.check_in <= ? AND b.check_out > ? ORDER BY b.check_in`, t, t),
-    departures: all(`SELECT b.id, b.guest_name, b.check_out, b.total - b.paid AS balance, r.name AS room_name FROM room_bookings b
-                     JOIN rooms r ON r.id = b.room_id WHERE b.status = 'checked_in' AND b.check_out <= ? ORDER BY b.check_out`, t),
+    departures: all(`SELECT b.id, b.guest_name, b.check_out, r.name AS room_name,
+                       COALESCE(pk.total_amount + COALESCE(ph.power_amount, 0) + COALESCE(ph.generator_amount, 0) - pk.advance_paid, b.total - b.paid) AS balance
+                     FROM room_bookings b JOIN rooms r ON r.id = b.room_id
+                     LEFT JOIN event_packages pk ON pk.id = b.package_id LEFT JOIN hall_bookings ph ON ph.id = pk.hall_booking_id WHERE b.status = 'checked_in' AND b.check_out <= ? ORDER BY b.check_out`, t),
     collectedToday: sum('paid_on = ?', t),
     collectedMonth: sum('substr(paid_on, 1, 7) = ?', t.slice(0, 7)),
+    // Bookings on their own, plus each combo once as one bill (its hall and rooms are inside it)
     dues: get(`SELECT COALESCE(SUM(MAX(total - paid, 0)), 0) AS v FROM (
-                 SELECT total, paid FROM room_bookings WHERE status <> 'cancelled'
-                 UNION ALL SELECT total, paid FROM hall_bookings WHERE status <> 'cancelled')`).v,
+                 SELECT total, paid FROM room_bookings WHERE status <> 'cancelled' AND COALESCE(package_id, 0) = 0
+                 UNION ALL SELECT total, paid FROM hall_bookings WHERE status <> 'cancelled' AND COALESCE(package_id, 0) = 0
+                 UNION ALL SELECT p.total_amount + COALESCE(h.power_amount, 0) + COALESCE(h.generator_amount, 0), p.advance_paid
+                   FROM event_packages p LEFT JOIN hall_bookings h ON h.id = p.hall_booking_id WHERE p.status <> 'cancelled')`).v,
     lowStock: all('SELECT * FROM supplies WHERE quantity <= min_quantity ORDER BY quantity * 1.0 / MAX(min_quantity, 1) LIMIT 8'),
     trend: lastSixMonths(),
     recent: req.user.role === 'admin'

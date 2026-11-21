@@ -3,9 +3,9 @@ import { all, get, run, today } from '../db.js';
 /*
  * Bill numbers printed on receipts and WhatsApp messages, e.g. "20-11-26-1R":
  * the day the booking was made (DD-MM-YY), the count for that day, and the kind:
- * R room, H banquet hall, S supplies, C combo. The database id stays internal.
+ * R room, H banquet hall, S supplies, C combo, D decoration. The database id stays internal.
  */
-const LETTER = { room_bookings: 'R', hall_bookings: 'H', supply_rentals: 'S', event_packages: 'C' };
+const LETTER = { room_bookings: 'R', hall_bookings: 'H', supply_rentals: 'S', event_packages: 'C', decor_plans: 'D' };
 export const BILL_TABLES = Object.keys(LETTER);
 
 const dayPrefix = ymd => `${ymd.slice(8, 10)}-${ymd.slice(5, 7)}-${ymd.slice(2, 4)}`;

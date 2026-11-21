@@ -3,6 +3,7 @@ import { all, get, log, run, today, tx } from '../db.js';
 import { found, inr, isDate } from '../lib/http.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { syncPaid } from './bookings.js';
+import { comboOfPayment, syncComboPaid } from '../lib/combo.js';
 
 const r = Router();
 export default r;
@@ -28,8 +29,10 @@ r.get('/', (req, res) => {
 r.delete('/:id', requireAdmin, (req, res) => {
   const p = found(get('SELECT * FROM payments WHERE id = ?', req.params.id), 'Payment');
   tx(() => {
+    const combo = comboOfPayment(p);
     run('DELETE FROM payments WHERE id = ?', p.id);
     syncPaid(p.kind, p.booking_id);
+    if (combo) syncComboPaid(combo);
   });
   log(req.user.id, 'payment deleted', `${inr(p.amount)} · ${p.kind} booking #${p.booking_id}`);
   res.json({ ok: true });

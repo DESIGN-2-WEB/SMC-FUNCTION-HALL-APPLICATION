@@ -13,6 +13,7 @@ const pages = {
   Rooms: () => import('./pages/Rooms.jsx'),
   Halls: () => import('./pages/Halls.jsx'),
   Supplies: () => import('./pages/Supplies.jsx'),
+  Decorations: () => import('./pages/Decorations.jsx'),
   Payments: () => import('./pages/Payments.jsx'),
   Users: () => import('./pages/Users.jsx'),
   Activity: () => import('./pages/Activity.jsx'),
@@ -24,6 +25,7 @@ const Combos = lazy(pages.Combos);
 const Rooms = lazy(pages.Rooms);
 const Halls = lazy(pages.Halls);
 const Supplies = lazy(pages.Supplies);
+const Decorations = lazy(pages.Decorations);
 const Payments = lazy(pages.Payments);
 const Users = lazy(pages.Users);
 const Activity = lazy(pages.Activity);
@@ -66,6 +68,7 @@ function Shell() {
         <Route path="rooms" element={<Rooms />} />
         <Route path="halls" element={<Halls />} />
         <Route path="supplies" element={<Supplies />} />
+        <Route path="decorations" element={<Decorations />} />
         <Route path="payments" element={<Payments />} />
         {isAdmin && <Route path="users" element={<Users />} />}
         {isAdmin && <Route path="activity" element={<Activity />} />}

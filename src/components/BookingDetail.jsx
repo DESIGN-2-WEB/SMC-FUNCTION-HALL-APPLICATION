@@ -12,6 +12,8 @@ import {
 import { Badge, Button, Field, Form, Input, Modal, PageLoader, cn, useUI } from './ui.jsx';
 import { DatePicker, Select } from './pickers.jsx';
 import WhatsAppModal, { WhatsAppIcon } from './WhatsAppModal.jsx';
+import PackageDetailModal from './PackageDetailModal.jsx';
+import { ExtraChargesForm } from './ExtraChargesForm.jsx';
 
 export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, onBookAnother }) {
   const { isAdmin } = useAuth();
@@ -23,6 +25,8 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
   const [waOpen, setWaOpen] = useState(false);
   const [extending, setExtending] = useState(false);
   const [chargesOpen, setChargesOpen] = useState(false);
+  const [comboOpen, setComboOpen] = useState(false);
+  const [comboWa, setComboWa] = useState(null);
 
   const run = async (fn, msg) => {
     setBusy(true);
@@ -58,7 +62,11 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
 
   const isRoom = kind === 'room';
   const meta = (isRoom ? ROOM_STATUS : HALL_STATUS)[b.status];
-  const balance = b.total - b.paid;
+  // A booking inside a combo has no bill of its own: the combo's total, paid and balance apply
+  const inCombo = !!b.package_id;
+  const billTotal = inCombo ? Number(b.combo_total) || 0 : b.total;
+  const billPaid = inCombo ? Number(b.combo_paid) || 0 : b.paid;
+  const balance = billTotal - billPaid;
   const closed = ['cancelled', 'checked_out', 'completed'].includes(b.status);
   const n = isRoom ? nights(b.check_in, b.check_out) : 0;
   const times = roomTimes(settings);
@@ -141,15 +149,22 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
       footer={
         <>
           {menu.length > 0 && <MoreMenu items={menu} disabled={busy} />}
-          <Button variant="outline" icon={Printer} onClick={() => printReceipt(kind, b, settings)}>Receipt</Button>
-          <Button
-            variant="outline"
-            icon={WhatsAppIcon}
-            onClick={() => setWaOpen(true)}
-            className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 hover:border-emerald-400 font-medium"
-          >
-            WhatsApp
-          </Button>
+          {inCombo ? (
+            // The bill, receipt and WhatsApp messages of a combo booking are the combo's
+            <Button variant="outline" icon={Printer} onClick={() => setComboOpen(true)}>Combo bill</Button>
+          ) : (
+            <>
+              <Button variant="outline" icon={Printer} onClick={() => printReceipt(kind, b, settings)}>Receipt</Button>
+              <Button
+                variant="outline"
+                icon={WhatsAppIcon}
+                onClick={() => setWaOpen(true)}
+                className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 hover:border-emerald-400 font-medium"
+              >
+                WhatsApp
+              </Button>
+            </>
+          )}
           {actions}
         </>
       }
@@ -164,8 +179,8 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
       )}
       <div className="grid grid-cols-3 gap-3">
         {[
-          ['Total', inr(b.total), 'text-ink-900'],
-          ['Paid', inr(b.paid), 'text-emerald-600'],
+          [inCombo ? 'Combo total' : 'Total', inr(billTotal), 'text-ink-900'],
+          ['Paid', inr(billPaid), 'text-emerald-600'],
           ['Balance', inr(balance), balance > 0 ? 'text-rose-600' : 'text-stone-400'],
         ].map(([l, v, c]) => (
           <div key={l} className="rounded-2xl bg-stone-50 p-4">
@@ -203,6 +218,8 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
           {chargesOpen && (
             <ExtraChargesForm
               booking={b}
+              billTotal={billTotal}
+              billPaid={billPaid}
               onCancel={() => setChargesOpen(false)}
               onDone={async () => { setChargesOpen(false); await reload(); onChanged?.(); }}
             />
@@ -235,27 +252,49 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
 
       {b.notes && <p className="mt-4 rounded-xl bg-gold-50 px-4 py-3 text-sm text-gold-800">{b.notes}</p>}
 
-      <h4 className="mt-6 mb-3 font-semibold text-ink-900">Payments</h4>
-      {b.payments.length ? (
-        <div className="divide-y divide-stone-100 rounded-2xl border border-stone-200">
-          {b.payments.map(p => (
-            <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-3">
-              <div className="flex items-center gap-3">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><IndianRupee size={16} /></div>
-                <div>
-                  <p className="text-sm font-medium">{p.method}{p.note ? ` · ${p.note}` : ''}</p>
-                  <p className="text-xs text-stone-500">{fmtDate(p.paid_on)} · {p.created_by_name || '—'}</p>
-                </div>
-              </div>
-              <p className="font-semibold text-emerald-700">{inr(p.amount)}</p>
-            </div>
-          ))}
+      {inCombo && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold-300 bg-gold-50/70 px-4 py-3">
+          <p className="min-w-0 text-sm text-gold-900">
+            Part of combo <b>{b.combo_bill_no || ''}</b>. Payments{!isRoom ? ' and the full bill' : ''} are on the combo.
+            {!isRoom && ' Power and generator added here also go on the combo bill.'}
+          </p>
+          <Button size="sm" variant="gold" onClick={() => setComboOpen(true)}>Open combo</Button>
         </div>
-      ) : (
-        <p className="rounded-2xl border border-dashed border-stone-200 px-4 py-5 text-center text-sm text-stone-400">No payments yet</p>
+      )}
+      {comboOpen && (
+        <PackageDetailModal packageId={b.package_id} onClose={() => setComboOpen(false)}
+          onRefresh={async () => { await reload(); onChanged?.(); }} onShareWa={setComboWa} />
+      )}
+      {comboWa && <WhatsAppModal kind="package" booking={comboWa} onClose={() => setComboWa(null)} />}
+
+      {/* A combo's payments are listed on the combo itself */}
+      {!inCombo && (
+        <>
+          <h4 className="mt-6 mb-3 font-semibold text-ink-900">Payments</h4>
+          {b.payments.length ? (
+            <div className="divide-y divide-stone-100 rounded-2xl border border-stone-200">
+              {b.payments.map(p => (
+                <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><IndianRupee size={16} /></div>
+                    <div>
+                      <p className="text-sm font-medium">{p.method}{p.note ? ` · ${p.note}` : ''}</p>
+                      <p className="text-xs text-stone-500">{fmtDate(p.paid_on)} · {p.created_by_name || '—'}</p>
+                    </div>
+                  </div>
+                  <p className="font-semibold text-emerald-700">{inr(p.amount)}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-2xl border border-dashed border-stone-200 px-4 py-5 text-center text-sm text-stone-400">
+              No payments yet
+            </p>
+          )}
+        </>
       )}
 
-      {b.status !== 'cancelled' && (
+      {b.status !== 'cancelled' && !inCombo && (
         <Form onSubmit={addPayment} className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_1.4fr_auto]">
           <Input type="number" min="1" required placeholder={balance > 0 ? `Amount (due ${inr(balance)})` : 'Amount'} value={pay.amount} onChange={e => setPay({ ...pay, amount: e.target.value })} />
           <Select value={pay.method} onChange={v => setPay({ ...pay, method: v })} options={METHODS} />
@@ -307,115 +346,6 @@ function MoreMenu({ items, disabled }) {
         </div>
       )}
     </div>
-  );
-}
-
-/**
- * Power meter reading and generator hours for a hall booking, entered inside the booking panel
- * from the event day. Their charges are added to the hall bill; the server works out the
- * amounts from the booking's and Settings' rates.
- */
-function ExtraChargesForm({ booking: b, onCancel, onDone }) {
-  const { settings } = useSettings();
-  const { toast } = useUI();
-  const powerRate = Number(b.power_rate) || Number(settings.power_rate) || 15;
-  let generators = [];
-  try {
-    generators = typeof settings.generators === 'string' ? JSON.parse(settings.generators) : settings.generators || [];
-  } catch {
-    generators = [];
-  }
-  if (!Array.isArray(generators)) generators = [];
-  const [f, setF] = useState({
-    power_start: b.power_start || '', power_end: b.power_end || '', power_units: b.power_units || '',
-    generator_type: b.generator_type || '', generator_hours: b.generator_hours || '',
-  });
-  const [saving, setSaving] = useState(false);
-  const set = (k, v) => setF(prev => {
-    const next = { ...prev, [k]: v };
-    if (k === 'power_start' || k === 'power_end') {
-      const start = Number(next.power_start) || 0;
-      const end = Number(next.power_end) || 0;
-      next.power_units = next.power_end !== '' && end >= start ? end - start : '';
-    }
-    return next;
-  });
-
-  const listed = generators.find(g => g.name === f.generator_type);
-  const genRate = Number(listed ? listed.rate : f.generator_type === b.generator_type ? b.generator_rate : 0) || 0;
-  const powerAmount = Math.round((Number(f.power_units) || 0) * powerRate);
-  const genAmount = f.generator_type ? Math.round((Number(f.generator_hours) || 0) * genRate) : 0;
-  // The bill without any earlier power/generator charges (hall rent, or a custom amount)
-  const base = (Number(b.total) || 0) - (Number(b.power_amount) || 0) - (Number(b.generator_amount) || 0);
-  const newTotal = base + powerAmount + genAmount;
-  const due = newTotal - (Number(b.paid) || 0);
-
-  const submit = async () => {
-    setSaving(true);
-    try {
-      await api(`/hall-bookings/${b.id}/extra-charges`, {
-        method: 'POST',
-        body: {
-          power_start: Number(f.power_start) || 0,
-          power_end: Number(f.power_end) || 0,
-          power_units: Number(f.power_units) || 0,
-          generator_type: f.generator_type,
-          generator_hours: f.generator_type ? Number(f.generator_hours) || 0 : 0,
-        },
-      });
-      toast(`Power & generator saved · bill now ${inr(newTotal)}`);
-      await onDone();
-    } catch (e) {
-      toast(e.message, 'error');
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Form onSubmit={submit} className="mb-3 space-y-3 rounded-xl border border-gold-300 bg-white p-3">
-      <div>
-        <p className="mb-2 text-xs font-semibold tracking-wider text-stone-500 uppercase">Power bill · {inr(powerRate)}/unit</p>
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="Start reading">
-            <Input type="number" min="0" step="any" placeholder="0" value={f.power_start} onChange={e => set('power_start', e.target.value)} />
-          </Field>
-          <Field label="End reading">
-            <Input type="number" min="0" step="any" placeholder="0" value={f.power_end} onChange={e => set('power_end', e.target.value)} />
-          </Field>
-          <Field label="Units used">
-            <Input type="number" min="0" step="any" placeholder="0" value={f.power_units} onChange={e => set('power_units', e.target.value)} />
-          </Field>
-        </div>
-      </div>
-      <div>
-        <p className="mb-2 text-xs font-semibold tracking-wider text-stone-500 uppercase">Generator bill</p>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Generator">
-            <Select
-              value={f.generator_type}
-              onChange={v => set('generator_type', v)}
-              options={[{ value: '', label: 'Not used' }, ...generators.map(g => ({ value: g.name, label: `${g.name} (${inr(g.rate)}/hr)` }))]}
-            />
-          </Field>
-          <Field label="Hours used">
-            <Input type="number" min="0" step="0.5" placeholder="0" disabled={!f.generator_type} value={f.generator_hours} onChange={e => set('generator_hours', e.target.value)} />
-          </Field>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">
-        <p className="text-xs text-stone-600">
-          Power + generator <b className="text-gold-800">{inr(powerAmount + genAmount)}</b> · new bill <b className="text-ink-900">{inr(newTotal)}</b>
-          {' · '}
-          <span className={due > 0 ? 'font-semibold text-rose-600' : 'font-semibold text-emerald-700'}>
-            {due > 0 ? `${inr(due)} to collect` : 'fully paid'}
-          </span>
-        </p>
-        <div className="flex gap-2">
-          <Button type="button" size="sm" variant="outline" onClick={onCancel}>Cancel</Button>
-          <Button type="submit" size="sm" variant="gold" icon={Zap} loading={saving}>Save</Button>
-        </div>
-      </div>
-    </Form>
   );
 }
 

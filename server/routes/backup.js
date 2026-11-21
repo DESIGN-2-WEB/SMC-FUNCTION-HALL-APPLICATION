@@ -19,6 +19,7 @@ export default r;
 const DATA_TABLES = [
   'users', 'rooms', 'halls', 'supplies', 'settings',
   'event_packages', 'hall_bookings', 'room_bookings', 'payments', 'stock_moves', 'supply_rentals',
+  'decor_items', 'decor_plans',
 ];
 const LOG_TABLES = ['activity', 'user_sessions'];
 const BCRYPT = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;

@@ -321,3 +321,31 @@ export function buildBulkRentalMessage(order, settings) {
     te: ['మీ వేడుక కోసం పంపిన సామాగ్రి వివరాలు పైన ఇవ్వబడ్డాయి.', status.te],
   });
 }
+
+/** Decoration plan sent as a quote: items grouped by area (stage, entrance...) and the total. */
+export function buildDecorMessage(plan, settings) {
+  const items = plan.items || [];
+  const areas = [...new Set(items.map(it => it.area))];
+  const list = areas.map(area => {
+    const rows = items.filter(it => it.area === area);
+    const sub = rows.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+    const lines = rows.map(it => `   - ${it.name}: ${it.qty} ${it.unit || 'pcs'} × ${inr(it.rate)} = ${inr(it.amount)}`).join('\n');
+    return `*${area}* (${inr(sub)})\n${lines}`;
+  }).join('\n\n');
+  const discount = Number(plan.discount) || 0;
+  return compose(settings, {
+    icon: '🌸', name: plan.customer_name, detailsTitle: 'Decoration details',
+    details: [
+      ['Bill No', plan.bill_no],
+      ...(plan.event_name ? [['Function', plan.event_name]] : []),
+      ['Event date', fmtDate(plan.event_date)],
+      ...(plan.hall_name ? [['Hall', plan.hall_name]] : []),
+    ],
+    bill: [
+      ...(discount > 0 ? [['Items', inr(plan.subtotal)], ['Discount', `- ${inr(discount)}`]] : []),
+      ['Decoration total', inr(plan.total)],
+    ],
+    en: [`Here is the decoration plan for your function:\n\n${list}`, 'Please tell us if you would like to change anything.'],
+    te: ['మీ వేడుక కోసం అలంకరణ వివరాలు పైన ఇవ్వబడ్డాయి.', 'ఏమైనా మార్పులు కావాలంటే దయచేసి మాకు తెలియజేయండి.'],
+  });
+}

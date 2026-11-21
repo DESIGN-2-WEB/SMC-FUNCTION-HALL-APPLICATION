@@ -4,6 +4,7 @@ import { fail, found, inr, isDate, num, str } from '../lib/http.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { setBillNo } from '../lib/billno.js';
 import { getDBSettings } from './settings.js';
+import { COMBO_COLUMNS, COMBO_JOINS, syncComboPaid } from '../lib/combo.js';
 
 /*
  * Room bookings and hall bookings share one flow (list, view, create, edit,
@@ -17,8 +18,8 @@ const SLOT_NAMES = { full: 'full day', half: 'half day', morning: 'morning', eve
 const KINDS = {
   room: {
     table: 'room_bookings',
-    select: `SELECT b.*, r.number AS room_number, r.name AS room_name, u.name AS created_by_name
-             FROM room_bookings b JOIN rooms r ON r.id = b.room_id LEFT JOIN users u ON u.id = b.created_by`,
+    select: `SELECT b.*, r.number AS room_number, r.name AS room_name, u.name AS created_by_name${COMBO_COLUMNS}
+             FROM room_bookings b JOIN rooms r ON r.id = b.room_id LEFT JOIN users u ON u.id = b.created_by${COMBO_JOINS}`,
     search: 'b.guest_name LIKE ? OR b.phone LIKE ?',
     range: 'b.check_in <= ? AND b.check_out >= ?',
     rangeArgs: (from, to) => [to, from],
@@ -56,8 +57,8 @@ const KINDS = {
   },
   hall: {
     table: 'hall_bookings',
-    select: `SELECT b.*, h.name AS hall_name, u.name AS created_by_name
-             FROM hall_bookings b JOIN halls h ON h.id = b.hall_id LEFT JOIN users u ON u.id = b.created_by`,
+    select: `SELECT b.*, h.name AS hall_name, u.name AS created_by_name${COMBO_COLUMNS}
+             FROM hall_bookings b JOIN halls h ON h.id = b.hall_id LEFT JOIN users u ON u.id = b.created_by${COMBO_JOINS}`,
     search: 'b.customer_name LIKE ? OR b.phone LIKE ?',
     range: 'b.event_date BETWEEN ? AND ?',
     rangeArgs: (from, to) => [from, to],
@@ -292,6 +293,8 @@ function bookingRouter(kind) {
   r.post('/:id/payments', (req, res) => {
     const b = load(req.params.id);
     if (b.status === 'cancelled') fail('This booking is cancelled');
+    // A combo has one bill: its money is taken on the combo, so the balance stays right
+    if (b.package_id) fail(`This booking is part of combo${b.combo_bill_no ? ` ${b.combo_bill_no}` : ''}. Take the payment on the combo.`);
     const amount = num(req.body.amount);
     if (amount <= 0) fail('Enter an amount greater than zero');
     const paidOn = isDate(req.body.paid_on) ? req.body.paid_on : today();
@@ -352,7 +355,7 @@ function bookingRouter(kind) {
     tx(() => {
       run('UPDATE room_bookings SET check_out = ?, total = total + ? WHERE id = ?', checkOut, extra, b.id);
       if (b.package_id) {
-        run('UPDATE packages SET rooms_amount = rooms_amount + ?, total_amount = total_amount + ? WHERE id = ?',
+        run('UPDATE event_packages SET rooms_amount = rooms_amount + ?, total_amount = total_amount + ? WHERE id = ?',
           extra, extra, b.package_id);
       }
     });
@@ -364,8 +367,12 @@ function bookingRouter(kind) {
   r.delete('/:id', requireAdmin, (req, res) => {
     const b = load(req.params.id);
     tx(() => {
+      // The combo's own payments stay with the combo (they are found by their note)
+      if (b.package_id)
+        run("UPDATE payments SET booking_id = 0 WHERE kind = ? AND booking_id = ? AND note LIKE 'Package %'", kind, b.id);
       run('DELETE FROM payments WHERE kind = ? AND booking_id = ?', kind, b.id);
       run(`DELETE FROM ${K.table} WHERE id = ?`, b.id);
+      if (b.package_id) syncComboPaid(b.package_id);
     });
     log(req.user.id, `${kind} booking deleted`, K.label(b));
     res.json({ ok: true });

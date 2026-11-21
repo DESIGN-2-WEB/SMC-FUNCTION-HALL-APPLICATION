@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { all, get, log, run, today, tx } from '../db.js';
 import { fail, found, isDate, num, str } from '../lib/http.js';
 import { setBillNo } from '../lib/billno.js';
+import { comboPaymentsWhere, syncComboPaid } from '../lib/combo.js';
+import { syncPaid } from './bookings.js';
 
 const r = Router();
 export default r;
@@ -44,22 +46,23 @@ const loadPackage = id => {
     ORDER BY s.category, s.name
   `, pkg.id);
 
-  // Payments: package advances/payments (matched by their note) plus any taken on the hall booking
+  // Every payment of the combo: its own advance and payments, and any taken on its hall or rooms
+  const w = comboPaymentsWhere(pkg);
   const payments = all(`
     SELECT p.*, u.name AS created_by_name FROM payments p LEFT JOIN users u ON u.id = p.created_by
-    WHERE p.note LIKE ? OR p.note LIKE ? OR p.note = ?
-       OR (p.kind = 'hall' AND p.booking_id > 0 AND p.booking_id = ?)
+    WHERE ${w.sql}
     ORDER BY p.paid_on, p.id
-  `, `Package Advance for #${pkg.id} ·%`, `Package Payment for #${pkg.id} ·%`, `Package Payment for #${pkg.id}`,
-    pkg.hall_booking_id || 0);
+  `, ...w.args);
+  const advance_paid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
 
   // Power & generator charges entered later on the combo's hall booking belong on the combined bill
   const extras_amount = hall ? (Number(hall.power_amount) || 0) + (Number(hall.generator_amount) || 0) : 0;
   const grand_total = (Number(pkg.total_amount) || 0) + extras_amount;
-  const balance = Math.max(0, grand_total - pkg.advance_paid);
+  const balance = Math.max(0, grand_total - advance_paid);
 
   return {
     ...pkg,
+    advance_paid,
     hall,
     rooms,
     supplies,
@@ -376,16 +379,6 @@ r.post('/:id/payment', (req, res) => {
   if (amount > pkg.balance) fail(`Amount exceeds pending package balance of ₹${pkg.balance}`);
 
   tx(() => {
-    const newPaid = pkg.advance_paid + amount;
-    run('UPDATE event_packages SET advance_paid = ? WHERE id = ?', newPaid, pkg.id);
-
-    if (pkg.hall_booking_id) {
-      const hb = get('SELECT paid FROM hall_bookings WHERE id = ?', pkg.hall_booking_id);
-      if (hb) {
-        run('UPDATE hall_bookings SET paid = paid + ? WHERE id = ?', amount, pkg.hall_booking_id);
-      }
-    }
-
     run(`
       INSERT INTO payments (kind, booking_id, amount, method, note, paid_on, created_by)
       VALUES ('hall', ?, ?, ?, ?, ?, ?)
@@ -397,6 +390,8 @@ r.post('/:id/payment', (req, res) => {
       today(),
       req.user.id
     );
+    if (pkg.hall_booking_id) syncPaid('hall', pkg.hall_booking_id);
+    syncComboPaid(pkg.id);
   });
 
   log(req.user.id, 'package payment recorded', `₹${amount} for ${pkg.customer_name} (Package #${pkg.id})`);

@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { db, get, run, tx } from './db.js';
 import { backfillBillNos } from './lib/billno.js';
+import { syncAllComboPaid } from './lib/combo.js';
 
 export function migrate() {
   db.exec(`
@@ -277,6 +278,37 @@ export function migrate() {
     db.exec("ALTER TABLE supply_rentals ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'Cash'");
   }
 
+  // Decorations: a price list per area (stage, entrance...) and a costed plan per event
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS decor_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    area TEXT NOT NULL,
+    name TEXT NOT NULL,
+    unit TEXT NOT NULL DEFAULT 'pcs',
+    price REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );
+  CREATE TABLE IF NOT EXISTS decor_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bill_no TEXT NOT NULL DEFAULT '',
+    hall_booking_id INTEGER REFERENCES hall_bookings(id) ON DELETE SET NULL,
+    customer_name TEXT NOT NULL,
+    phone TEXT NOT NULL DEFAULT '',
+    event_name TEXT NOT NULL DEFAULT '',
+    event_date TEXT NOT NULL,
+    items TEXT NOT NULL DEFAULT '[]',
+    subtotal REAL NOT NULL DEFAULT 0,
+    discount REAL NOT NULL DEFAULT 0,
+    total REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned', 'done', 'cancelled')),
+    notes TEXT NOT NULL DEFAULT '',
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_decor_items_area ON decor_items(area);
+  CREATE INDEX IF NOT EXISTS idx_decor_plans_date ON decor_plans(event_date);
+  `);
+
   // Bill number shown to customers (see lib/billno.js); filled in for older rows by applyDefaults
   for (const table of ['room_bookings', 'hall_bookings', 'supply_rentals', 'event_packages']) {
     const cols = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name));
@@ -302,6 +334,27 @@ export function applyDefaults() {
   }
   db.prepare(`DELETE FROM settings WHERE key IN (${RETIRED_SETTINGS.map(() => '?').join(', ')})`).run(...RETIRED_SETTINGS);
   backfillBillNos(); // older bookings get a bill number once the real data has loaded
+  syncAllComboPaid(); // combos count payments taken on their hall or rooms too
+  seedDecorItems();
+}
+
+/**
+ * Starter decoration items for each area, added once (prices left at 0 for the owner to set).
+ * A marker setting stops them coming back after someone deletes them.
+ */
+const DECOR_STARTER = [
+  ['Stage', 'Stage flower backdrop'], ['Stage', 'Stage side pillars'], ['Stage', 'Stage lighting'],
+  ['Entrance', 'Entrance flower arch'], ['Entrance', 'Welcome board'], ['Entrance', 'Door flower decoration'],
+  ['Walkway', 'Red carpet'], ['Walkway', 'Creeper arches'], ['Walkway', 'Walkway flower arch'],
+  ['Photo booths', 'Sequin photo wall'], ['Photo booths', 'Sunflower petal backdrop'], ['Photo booths', 'Flower petal panel'],
+  ['Main outdoor staircase', 'Railing flower garlands'], ['Main outdoor staircase', 'String lights'],
+];
+function seedDecorItems() {
+  // No transaction of its own: applyDefaults also runs inside the restore transaction
+  if (get("SELECT 1 FROM settings WHERE key = '_decor_seeded'")) return;
+  if (!get('SELECT 1 FROM decor_items LIMIT 1'))
+    for (const [area, name] of DECOR_STARTER) run('INSERT INTO decor_items (area, name) VALUES (?, ?)', area, name);
+  run("INSERT INTO settings (key, value) VALUES ('_decor_seeded', '1')");
 }
 
 export const DEFAULT_GENERATORS = [
@@ -410,6 +463,7 @@ export const DEFAULT_SETTINGS = {
   room_checkout_time: '12:00 PM',
   hall_full_time: '7:00 AM to 3:00 AM (next day)',
   hall_half_time: '7:00 AM to 3:00 PM',
+  decor_areas: 'Stage, Entrance, Walkway, Photo booths, Main outdoor staircase',
 };
 
 // Settings of the removed WhatsApp API option (Meta, Twilio, webhook). Messages now always

@@ -131,3 +131,8 @@ export const EVENT_TYPES = [
   'Corporate',
   'Other',
 ];
+
+/** What is still due on a booking. A hall or room inside a combo shows the whole combo's balance. */
+export const bookingDue = b => (b.package_id
+  ? (Number(b.combo_total) || 0) - (Number(b.combo_paid) || 0)
+  : (Number(b.total) || 0) - (Number(b.paid) || 0));

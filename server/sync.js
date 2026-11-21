@@ -26,6 +26,8 @@ const TABLES = [
   ['payments', 'id'],
   ['stock_moves', 'id'],
   ['supply_rentals', 'id'],
+  ['decor_items', 'id'],
+  ['decor_plans', 'id'],
   ['user_sessions', 'id'],
   ['activity', 'id'],
 ];

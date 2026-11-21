@@ -9,7 +9,7 @@ import {
   Badge, Button, Card, EmptyState, Field, Form, Input, Modal, PageHeader, PageLoader, Segmented, Textarea, cn,
 } from '../components/ui.jsx';
 import { Select } from '../components/pickers.jsx';
-import { ROOM_STATE, ROOM_STATUS, fmtShort, inr, nights } from '../utils.js';
+import { ROOM_STATE, ROOM_STATUS, bookingDue, fmtShort, inr, nights } from '../utils.js';
 import { useRowsReveal } from '../motion.js';
 
 const FILTERS = [
@@ -94,7 +94,7 @@ export default function Rooms() {
               </thead>
               <tbody ref={rowsRef} className="divide-y divide-stone-100">
                 {bookings.data.map(b => {
-                  const due = b.total - b.paid;
+                  const due = bookingDue(b);
                   const n = nights(b.check_in, b.check_out);
                   return (
                     <tr
@@ -113,7 +113,7 @@ export default function Rooms() {
                       </td>
                       <td className="td text-right whitespace-nowrap">
                         <p className="font-medium">{inr(b.total)}</p>
-                        <p className={cn('text-xs', due > 0 ? 'text-rose-600' : 'text-emerald-600')}>{due > 0 ? `${inr(due)} due` : 'Paid'}</p>
+                        <p className={cn('text-xs', due > 0 ? 'text-rose-600' : 'text-emerald-600')}>{b.package_id ? 'Combo · ' : ''}{due > 0 ? `${inr(due)} due` : 'Paid'}</p>
                       </td>
                       <td className="td"><Badge tone={ROOM_STATUS[b.status].tone} dot>{ROOM_STATUS[b.status].label}</Badge></td>
                       <td className="td text-right whitespace-nowrap">

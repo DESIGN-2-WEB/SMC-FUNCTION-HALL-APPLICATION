@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Check, Copy, Smartphone } from 'lucide-react';
 import { useSettings } from '../settings.jsx';
 import { Button, Field, Input, Modal, Segmented, useUI } from './ui.jsx';
-import { buildBulkRentalMessage, buildHallMessage, buildPackageMessage, buildRoomMessage, buildSupplyMessage, cleanPhone, openWhatsApp } from '../utils/whatsapp.js';
+import { buildBulkRentalMessage, buildDecorMessage, buildHallMessage, buildPackageMessage, buildRoomMessage, buildSupplyMessage, cleanPhone, openWhatsApp } from '../utils/whatsapp.js';
 
 export function WhatsAppIcon({ size = 16, className = '' }) {
   return (
@@ -20,6 +20,7 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, o
   const isSupply = kind === 'supply';
   const isPackage = kind === 'package';
   const isBulkRental = kind === 'bulk_rental';
+  const isDecor = kind === 'decor';
 
   // Templates options based on booking kind
   // Greeting (booking confirmed / welcome), Payment (received, due or fully paid), Thank you
@@ -42,6 +43,8 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, o
       ]
     : isBulkRental
     ? [{ value: 'rental', label: 'Dispatch slip' }]
+    : isDecor
+    ? [{ value: 'decor', label: 'Decoration quote' }]
     : [{ value: 'supply', label: 'Supply receipt' }];
 
   // Open on the message that fits where the booking is: thanks once it is over
@@ -53,7 +56,9 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, o
   const [copied, setCopied] = useState(false);
 
   // Generate message based on selected template
-  const text = isBulkRental
+  const text = isDecor
+    ? buildDecorMessage(booking, settings)
+    : isBulkRental
     ? buildBulkRentalMessage(booking, settings)
     : isPackage
     ? buildPackageMessage(booking, settings, template)
@@ -89,7 +94,7 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, o
     <Modal
       size="md"
       title="Share Receipt on WhatsApp"
-      subtitle={`Send formatted receipt & confirmation to ${isRoom ? booking?.guest_name : isHall ? booking?.customer_name : 'Customer'}`}
+      subtitle={`Send formatted receipt & confirmation to ${isRoom ? booking?.guest_name : isHall || isDecor ? booking?.customer_name : 'Customer'}`}
       onClose={onClose}
       footer={
         <div className="flex w-full flex-wrap items-center justify-between gap-2.5">

@@ -14,7 +14,7 @@ import WhatsAppModal from '../components/WhatsAppModal.jsx';
 import {
   Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, PageLoader, Segmented, Textarea, cn, useUI,
 } from '../components/ui.jsx';
-import { HALL_STATUS, fmtDate, inr, relDay, slotName, slotTime, today } from '../utils.js';
+import { HALL_STATUS, bookingDue, fmtDate, inr, relDay, slotName, slotTime, today } from '../utils.js';
 import { useRowsReveal } from '../motion.js';
 
 const FILTERS = [
@@ -447,7 +447,7 @@ export default function Halls() {
               </thead>
               <tbody ref={rowsRef} className="divide-y divide-stone-100">
                 {list.map(b => {
-                  const due = b.total - b.paid;
+                  const due = bookingDue(b);
                   return (
                     <tr
                       key={b.id}
@@ -469,7 +469,7 @@ export default function Halls() {
                       </td>
                       <td className="td text-right whitespace-nowrap">
                         <p className="font-medium">{inr(b.total)}</p>
-                        <p className={cn('text-xs', due > 0 ? 'text-rose-600' : 'text-emerald-600')}>{due > 0 ? `${inr(due)} due` : 'Paid'}</p>
+                        <p className={cn('text-xs', due > 0 ? 'text-rose-600' : 'text-emerald-600')}>{b.package_id ? 'Combo · ' : ''}{due > 0 ? `${inr(due)} due` : 'Paid'}</p>
                       </td>
                       <td className="td"><Badge tone={HALL_STATUS[b.status].tone} dot>{HALL_STATUS[b.status].label}</Badge></td>
                       <td className="td text-right whitespace-nowrap">
