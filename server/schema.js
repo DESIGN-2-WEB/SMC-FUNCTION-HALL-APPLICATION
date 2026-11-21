@@ -82,7 +82,7 @@ export function migrate() {
   );
   CREATE TABLE IF NOT EXISTS payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kind TEXT NOT NULL CHECK (kind IN ('room','hall')),
+    kind TEXT NOT NULL CHECK (kind IN ('room','hall','band')),
     booking_id INTEGER NOT NULL,
     amount REAL NOT NULL,
     method TEXT NOT NULL DEFAULT 'Cash',
@@ -140,6 +140,8 @@ export function migrate() {
     ['generator_hours', 'REAL NOT NULL DEFAULT 0'],
     ['generator_rate', 'REAL NOT NULL DEFAULT 0'],
     ['generator_amount', 'REAL NOT NULL DEFAULT 0'],
+    ['referral_name', "TEXT NOT NULL DEFAULT ''"], // who referred the customer (optional)
+    ['referral_phone', "TEXT NOT NULL DEFAULT ''"],
   ];
   for (const [col, def] of newCols) {
     if (!hbCols.has(col)) {
@@ -152,6 +154,7 @@ export function migrate() {
     ['id_photo_taken', 'INTEGER NOT NULL DEFAULT 0'],
     ['discount', 'REAL NOT NULL DEFAULT 0'],
     ['checked_out_at', "TEXT NOT NULL DEFAULT ''"], // when the guest actually left
+    ['checked_in_at', "TEXT NOT NULL DEFAULT ''"], // when the guest actually arrived
   ];
   for (const [col, def] of newRbCols) {
     if (!rbCols.has(col)) {
@@ -163,12 +166,19 @@ export function migrate() {
   const newHCols = [
     ['is_combo', 'INTEGER NOT NULL DEFAULT 0'],
     ['included_hall_ids', "TEXT NOT NULL DEFAULT ''"],
+    ['full_time', "TEXT NOT NULL DEFAULT ''"], // this hall's full / half day timings
+    ['half_time', "TEXT NOT NULL DEFAULT ''"],
   ];
   for (const [col, def] of newHCols) {
     if (!hCols.has(col)) {
       db.exec(`ALTER TABLE halls ADD COLUMN ${col} ${def}`);
     }
   }
+
+  // Each room's own check-in / check-out time
+  const roomCols = new Set(db.prepare('PRAGMA table_info(rooms)').all().map(c => c.name));
+  for (const col of ['checkin_time', 'checkout_time'])
+    if (!roomCols.has(col)) db.exec(`ALTER TABLE rooms ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`);
 
   // Supplies & Function Rentals schema migration
   const sCols = new Set(db.prepare("PRAGMA table_info(supplies)").all().map(c => c.name));
@@ -274,8 +284,34 @@ export function migrate() {
   if (!srColsCheck.has('advance_amount')) {
     db.exec('ALTER TABLE supply_rentals ADD COLUMN advance_amount REAL NOT NULL DEFAULT 0');
   }
+  // Share of an order's discount (e.g. the full set price) on this line; total_rent is after it
+  if (!srColsCheck.has('discount')) {
+    db.exec('ALTER TABLE supply_rentals ADD COLUMN discount REAL NOT NULL DEFAULT 0');
+  }
   if (!srColsCheck.has('payment_method')) {
     db.exec("ALTER TABLE supply_rentals ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'Cash'");
+  }
+
+  // Payments for a Band Melam booking (kind 'band'). An older database only allowed room and hall,
+  // so its payments table is rebuilt once with the wider rule (same rows, same ids).
+  const paySql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'payments'").get()?.sql || '';
+  if (paySql.includes("CHECK (kind IN ('room','hall'))")) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      db.exec('BEGIN');
+      db.exec(`CREATE TABLE payments_new (${paySql.slice(paySql.indexOf('(') + 1, paySql.lastIndexOf(')'))
+        .replace("CHECK (kind IN ('room','hall'))", "CHECK (kind IN ('room','hall','band'))")})`);
+      db.exec('INSERT INTO payments_new SELECT * FROM payments');
+      db.exec('DROP TABLE payments');
+      db.exec('ALTER TABLE payments_new RENAME TO payments');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_payments ON payments(kind, booking_id)');
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    } finally {
+      db.exec('PRAGMA foreign_keys = ON');
+    }
   }
 
   // Decorations: a price list per area (stage, entrance...) and a costed plan per event
@@ -307,7 +343,33 @@ export function migrate() {
   );
   CREATE INDEX IF NOT EXISTS idx_decor_items_area ON decor_items(area);
   CREATE INDEX IF NOT EXISTS idx_decor_plans_date ON decor_plans(event_date);
+
+  -- Band Melam: a performance booked for an event (no stock)
+  CREATE TABLE IF NOT EXISTS band_bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bill_no TEXT NOT NULL DEFAULT '',
+    hall_booking_id INTEGER REFERENCES hall_bookings(id) ON DELETE SET NULL,
+    customer_name TEXT NOT NULL,
+    phone TEXT NOT NULL DEFAULT '',
+    event_date TEXT NOT NULL,
+    timing TEXT NOT NULL DEFAULT '',
+    team TEXT NOT NULL DEFAULT '',
+    players INTEGER NOT NULL DEFAULT 0,
+    amount REAL NOT NULL DEFAULT 0,
+    paid REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'booked' CHECK (status IN ('booked', 'done', 'cancelled')),
+    notes TEXT NOT NULL DEFAULT '',
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_band_bookings_date ON band_bookings(event_date);
   `);
+  // The band team's phone, for sending them the programme timing on WhatsApp
+  if (!new Set(db.prepare('PRAGMA table_info(band_bookings)').all().map(c => c.name)).has('team_phone'))
+    db.exec("ALTER TABLE band_bookings ADD COLUMN team_phone TEXT NOT NULL DEFAULT ''");
+  // A decoration booked with a hall (and rooms or supplies) is part of that combo's one bill
+  if (!new Set(db.prepare('PRAGMA table_info(decor_plans)').all().map(c => c.name)).has('package_id'))
+    db.exec('ALTER TABLE decor_plans ADD COLUMN package_id INTEGER REFERENCES event_packages(id) ON DELETE SET NULL');
 
   // Bill number shown to customers (see lib/billno.js); filled in for older rows by applyDefaults
   for (const table of ['room_bookings', 'hall_bookings', 'supply_rentals', 'event_packages']) {
@@ -335,7 +397,31 @@ export function applyDefaults() {
   db.prepare(`DELETE FROM settings WHERE key IN (${RETIRED_SETTINGS.map(() => '?').join(', ')})`).run(...RETIRED_SETTINGS);
   backfillBillNos(); // older bookings get a bill number once the real data has loaded
   syncAllComboPaid(); // combos count payments taken on their hall or rooms too
+  fillTimings();
+  repairSupplyTotals();
   seedDecorItems();
+}
+
+/**
+ * Some older items have their total stock saved as 0 while units are in stock or out on rent.
+ * Editing such an item would then set its available stock to 0, so the total is put back as
+ * available + rented (only those rows are touched).
+ */
+function repairSupplyTotals() {
+  run(`UPDATE supplies SET total_quantity = quantity + COALESCE(rented_quantity, 0)
+       WHERE COALESCE(total_quantity, 0) = 0 AND (quantity > 0 OR COALESCE(rented_quantity, 0) > 0)`);
+}
+
+/**
+ * Timings now belong to each room and hall. Any without one get the value that used to be set
+ * once for all in Settings (only empty ones are touched, so nothing saved is overwritten).
+ */
+function fillTimings() {
+  const val = k => get('SELECT value FROM settings WHERE key = ?', k)?.value || DEFAULT_SETTINGS[k];
+  run("UPDATE rooms SET checkin_time = ? WHERE checkin_time = ''", val('room_checkin_time'));
+  run("UPDATE rooms SET checkout_time = ? WHERE checkout_time = ''", val('room_checkout_time'));
+  run("UPDATE halls SET full_time = ? WHERE full_time = ''", val('hall_full_time'));
+  run("UPDATE halls SET half_time = ? WHERE half_time = ''", val('hall_half_time'));
 }
 
 /**
@@ -464,6 +550,7 @@ export const DEFAULT_SETTINGS = {
   hall_full_time: '7:00 AM to 3:00 AM (next day)',
   hall_half_time: '7:00 AM to 3:00 PM',
   decor_areas: 'Stage, Entrance, Walkway, Photo booths, Main outdoor staircase',
+  supplies_full_set_price: '8000', // price when every supply item is taken together
 };
 
 // Settings of the removed WhatsApp API option (Meta, Twilio, webhook). Messages now always

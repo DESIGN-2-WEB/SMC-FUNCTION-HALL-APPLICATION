@@ -12,6 +12,8 @@ import {
 import { Combobox, Select } from '../components/pickers.jsx';
 import { addDays, fmtDate, fmtDateTime, inr, today } from '../utils.js';
 import WhatsAppModal, { WhatsAppIcon } from '../components/WhatsAppModal.jsx';
+import { useFullSetDiscount } from '../fullSet.js';
+import BandMelamTab from '../components/BandMelam.jsx';
 
 const DEFAULT_SUPPLY_CATEGORIES = [
   'Cooking Vessels',
@@ -79,7 +81,7 @@ export default function Supplies() {
     if (!trimmed) {
       return toast('Please enter a category name', 'error');
     }
-    if (configuredCategories.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+    if (categoryList.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
       return toast(`"${trimmed}" already exists in categories`, 'error');
     }
     const updated = [...configuredCategories, trimmed];
@@ -90,6 +92,8 @@ export default function Supplies() {
 
   const handleRemoveCategory = async catToRemove => {
     if (!catToRemove) return;
+    const used = itemsIn(catToRemove);
+    if (used) return toast(`${used} item${used === 1 ? '' : 's'} use "${catToRemove}". Move them to another category first.`, 'error');
     const updated = configuredCategories.filter(c => c.toLowerCase() !== catToRemove.toLowerCase());
     await saveCategories(updated);
     if (cat === catToRemove) setCat('All');
@@ -118,10 +122,14 @@ export default function Supplies() {
   const allRentals = rentalsApi.data || [];
   const activeRentals = useMemo(() => allRentals.filter(r => r.status === 'rented'), [allRentals]);
 
-  const categories = useMemo(
-    () => ['All', ...new Set([...configuredCategories, ...items.map(i => i.category).filter(Boolean)])],
+  // One list for the category card, the filter chips and the item form: the saved categories
+  // plus any category an item already uses, so the card and the filters always match
+  const categoryList = useMemo(
+    () => [...new Set([...configuredCategories, ...items.map(i => i.category).filter(Boolean)])],
     [configuredCategories, items]
   );
+  const categories = useMemo(() => ['All', ...categoryList], [categoryList]);
+  const itemsIn = c => items.filter(i => i.category === c).length;
 
   // Filtered Stock Items
   const shownItems = useMemo(
@@ -217,6 +225,11 @@ export default function Supplies() {
         }
       />
 
+      {/* Band Melam: a performance booked for an event, kept apart from the stock items below */}
+      <div id="band-melam" className="mb-8">
+        <BandMelamTab isAdmin={isAdmin} hallBookings={hallBookingsApi.data || []} />
+      </div>
+
       {/* Top Stat Cards */}
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -263,7 +276,7 @@ export default function Supplies() {
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold text-sm text-ink-900">Equipment Categories</h3>
                 <span className="rounded-full bg-gold-100 px-2 py-0.5 text-[11px] font-bold text-gold-800">
-                  {configuredCategories.length} categories
+                  {categoryList.length} categories
                 </span>
               </div>
               <p className="text-xs text-stone-500">
@@ -317,7 +330,7 @@ export default function Supplies() {
             <div className="rounded-xl border border-stone-200 bg-white p-3.5 space-y-2.5">
               <div className="flex items-center justify-between border-b border-stone-100 pb-2">
                 <span className="text-xs font-semibold uppercase tracking-wider text-stone-600">
-                  Active Categories ({configuredCategories.length}):
+                  Active Categories ({categoryList.length}):
                 </span>
                 {isAdmin && (
                   <button
@@ -330,19 +343,20 @@ export default function Supplies() {
                 )}
               </div>
 
-              {configuredCategories.length === 0 ? (
+              {categoryList.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-stone-200 p-4 text-center text-xs text-stone-500">
                   No supply categories configured. {isAdmin ? 'Type a name above and click "Add".' : ''}
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-2 pt-1">
-                  {configuredCategories.map(c => (
+                  {categoryList.map(c => (
                     <span
                       key={c}
                       className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-xs font-medium text-ink-900 transition hover:border-gold-300 hover:bg-gold-50/50"
                     >
                       <span>{c}</span>
-                      {isAdmin && (
+                      <span className="text-stone-400">{itemsIn(c)}</span>
+                      {isAdmin && !itemsIn(c) && (
                         <button
                           type="button"
                           onClick={() => handleRemoveCategory(c)}
@@ -377,6 +391,7 @@ export default function Supplies() {
         ]}
       />
 
+
       {/* TAB 1: EQUIPMENT INVENTORY & STOCK */}
       {tab === 'stock' && (
         <Card>
@@ -410,137 +425,77 @@ export default function Supplies() {
           </div>
 
           {shownItems.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-stone-100 bg-stone-50/60">
-                  <tr>
-                    <th className="th">Equipment / Item</th>
-                    <th className="th min-w-64">Stock Status (Available / Rented)</th>
-                    <th className="th text-right">Rent Rate</th>
-                    <th className="th text-right min-w-44">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100">
-                  {shownItems.map(i => {
-                    const total = Number(i.total_quantity) || Number(i.quantity) || 1;
-                    const available = Number(i.quantity) || 0;
-                    const rented = Number(i.rented_quantity) || 0;
-                    const availPct = Math.min(100, Math.round((available / total) * 100));
-                    const rentPct = Math.min(100 - availPct, Math.round((rented / total) * 100));
+            // A card per item, in a grid that fits the screen (one column on phones)
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-3 p-4">
+              {shownItems.map(i => {
+                const total = Number(i.total_quantity) || Number(i.quantity) || 1;
+                const available = Number(i.quantity) || 0;
+                const rented = Number(i.rented_quantity) || 0;
+                const availPct = Math.min(100, Math.round((available / total) * 100));
+                const rentPct = Math.min(100 - availPct, Math.round((rented / total) * 100));
+                return (
+                  <div key={i.id} className="flex min-w-0 flex-col rounded-2xl border border-stone-200 bg-white p-4 transition hover:border-gold-300 hover:shadow-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-ink-900">{i.name}</p>
+                        <p className="mt-0.5 text-xs text-stone-500">{i.category}</p>
+                      </div>
+                      {available === 0 ? (
+                        <Badge tone="rose">All out</Badge>
+                      ) : i.low ? (
+                        <Badge tone="amber">Low stock</Badge>
+                      ) : (
+                        <Badge tone="green">In stock</Badge>
+                      )}
+                    </div>
 
-                    return (
-                      <tr key={i.id} className="transition hover:bg-stone-50/60">
-                        <td className="td">
-                          <p className="font-semibold text-ink-900">{i.name}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xs text-stone-500">{i.category}</span>
-                            <span className="text-stone-300">·</span>
-                            <span className="text-xs font-mono text-stone-400">Total: {total} {i.unit}</span>
-                          </div>
-                        </td>
-                        <td className="td">
-                          <div className="flex items-center justify-between gap-2 text-xs">
-                            <span>
-                              <b className="text-ink-900 text-sm">{available}</b>{' '}
-                              <span className="text-emerald-700 font-medium">available</span>
-                              {rented > 0 && (
-                                <span className="text-stone-400 ml-1.5">
-                                  ({rented} <span className="text-amber-700 font-medium">rented</span>)
-                                </span>
-                              )}
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              {available === 0 ? (
-                                <Badge tone="rose">All out</Badge>
-                              ) : i.low ? (
-                                <Badge tone="amber">Low stock</Badge>
-                              ) : (
-                                <Badge tone="green">In stock</Badge>
-                              )}
-                            </div>
-                          </div>
-                          {/* Visual progress bar: green = available, amber = rented */}
-                          <div className="mt-1.5 flex h-2 w-full overflow-hidden rounded-full bg-stone-100">
-                            <div
-                              className="bg-emerald-500 transition-all"
-                              style={{ width: `${availPct}%` }}
-                              title={`${available} available (${availPct}%)`}
-                            />
-                            <div
-                              className="bg-amber-400 transition-all"
-                              style={{ width: `${rentPct}%` }}
-                              title={`${rented} rented (${rentPct}%)`}
-                            />
-                          </div>
-                          <div className="mt-1 flex items-center justify-between text-[11px] text-stone-400">
-                            <span>{availPct}% available</span>
-                            <span>Min alert: {i.min_quantity}</span>
-                          </div>
-                        </td>
-                        <td className="td text-right whitespace-nowrap">
-                          <p className="font-semibold text-ink-900">
-                            ₹{i.rent_rate || 0}
-                            <span className="text-xs font-normal text-stone-500">/{i.unit}</span>
-                          </p>
-                          <p className="text-[11px] text-stone-400">per function</p>
-                        </td>
-                        <td className="td">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              size="sm"
-                              variant="gold"
-                              icon={ArrowUpFromLine}
-                              disabled={available <= 0}
-                              onClick={() => setRentModalItem(i)}
-                              title={available <= 0 ? 'No units available to rent' : `Rent out ${i.name}`}
-                            >
-                              Rent Out
+                    <div className="mt-3 flex items-baseline justify-between gap-2 text-xs">
+                      <span>
+                        <b className="text-lg text-ink-900">{available}</b>
+                        <span className="text-stone-500"> / {total} {i.unit} available</span>
+                      </span>
+                      <span className="whitespace-nowrap font-semibold text-ink-900">
+                        ₹{i.rent_rate || 0}<span className="font-normal text-stone-500">/{i.unit}</span>
+                      </span>
+                    </div>
+                    {/* green = available, amber = rented */}
+                    <div className="mt-1.5 flex h-2 w-full overflow-hidden rounded-full bg-stone-100">
+                      <div className="bg-emerald-500 transition-all" style={{ width: `${availPct}%` }} title={`${available} available (${availPct}%)`} />
+                      <div className="bg-amber-400 transition-all" style={{ width: `${rentPct}%` }} title={`${rented} rented (${rentPct}%)`} />
+                    </div>
+                    <div className="mt-1 mb-3 flex items-center justify-between text-[11px] text-stone-400">
+                      <span>{rented > 0 ? `${rented} rented out` : 'None rented out'}</span>
+                      <span>Min alert: {i.min_quantity}</span>
+                    </div>
+
+                    <div className="mt-auto flex flex-wrap items-center gap-1.5 border-t border-stone-100 pt-3">
+                      <Button size="sm" variant="gold" icon={ArrowUpFromLine} disabled={available <= 0}
+                        onClick={() => setRentModalItem(i)} title={available <= 0 ? 'No units available to rent' : `Rent out ${i.name}`}>
+                        Rent Out
+                      </Button>
+                      <Button size="sm" variant="outline" icon={ArrowDownToLine} onClick={() => setMoveItem({ item: i, type: 'in' })}
+                        className="text-emerald-700" title="Restock / Add more units">
+                        In
+                      </Button>
+                      <span className="ml-auto flex items-center">
+                        <Button size="icon" variant="ghost" title="Stock History" aria-label={`Stock history of ${i.name}`} onClick={() => setHistoryItem(i)}>
+                          <History size={15} />
+                        </Button>
+                        {isAdmin && (
+                          <>
+                            <Button size="icon" variant="ghost" title="Edit Item" aria-label={`Edit ${i.name}`} onClick={() => setEditItem(i)}>
+                              <Pencil size={15} />
                             </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              icon={ArrowDownToLine}
-                              onClick={() => setMoveItem({ item: i, type: 'in' })}
-                              className="text-emerald-700"
-                              title="Restock / Add more units"
-                            >
-                              In
+                            <Button size="icon" variant="danger-soft" title="Delete Item" aria-label={`Delete ${i.name}`} onClick={() => deleteItem(i)}>
+                              <Trash2 size={15} />
                             </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              title="Stock History"
-                              onClick={() => setHistoryItem(i)}
-                            >
-                              <History size={15} />
-                            </Button>
-                            {isAdmin && (
-                              <>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  title="Edit Item"
-                                  onClick={() => setEditItem(i)}
-                                >
-                                  <Pencil size={15} />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="danger-soft"
-                                  title="Delete Item"
-                                  onClick={() => deleteItem(i)}
-                                >
-                                  <Trash2 size={15} />
-                                </Button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <EmptyState
@@ -983,7 +938,7 @@ export default function Supplies() {
       {editItem && (
         <ItemModal
           item={editItem}
-          categories={configuredCategories}
+          categories={categoryList}
           onClose={() => setEditItem(null)}
           onSaved={() => {
             setEditItem(null);
@@ -1025,6 +980,7 @@ export default function Supplies() {
  */
 function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, onSaved }) {
   const { toast } = useUI();
+  const { settings } = useSettings();
 
   // Cart of equipment items being rented
   const [selectedItems, setSelectedItems] = useState(() => {
@@ -1134,10 +1090,24 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
   };
 
   const totalPieces = selectedItems.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
-  const totalRent = selectedItems.reduce(
+  const itemsTotal = selectedItems.reduce(
     (acc, it) => acc + (Number(it.quantity) || 0) * (Number(it.rent_rate) || 0),
     0
   );
+  // Every item in stock taken together: the bill becomes the full set price (discount editable)
+  const inStock = items.filter(i => Number(i.quantity) > 0);
+  const allSelected = inStock.length > 0 && inStock.every(i => selectedItems.some(s => s.supply_id === i.id));
+  const fullSet = useFullSetDiscount({ allSelected, itemsTotal, fullSetPrice: settings.supplies_full_set_price });
+  const totalRent = itemsTotal - fullSet.discount;
+  const addAllItems = () => {
+    setSelectedItems(prev => [
+      ...prev,
+      ...inStock.filter(i => !prev.some(s => s.supply_id === i.id)).map(i => ({
+        supply_id: i.id, name: i.name, unit: i.unit || 'pcs', category: i.category || '',
+        available: Number(i.quantity) || 0, quantity: 1, rent_rate: Number(i.rent_rate) || 0,
+      })),
+    ]);
+  };
   const adv = Number(f.advance_amount) || 0;
   const balance = Math.max(0, totalRent - adv);
 
@@ -1169,6 +1139,7 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
           advance_amount: adv,
           payment_method: f.payment_method,
           notes: f.notes.trim(),
+          discount: fullSet.discount,
           items: selectedItems.map(it => ({
             supply_id: it.supply_id,
             quantity: it.quantity,
@@ -1312,16 +1283,28 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
             )}
           </div>
 
-          <div>
-            <Select
-              searchable
-              className="bg-white"
-              value={itemToAdd}
-              placeholder="Search equipment (English / తెలుగు)…"
-              onChange={addItem}
-              options={itemOptions}
-            />
+          <div className="flex flex-wrap gap-2">
+            <div className="min-w-0 flex-1 basis-64">
+              <Select
+                searchable
+                className="bg-white"
+                value={itemToAdd}
+                placeholder="Search equipment (English / తెలుగు)…"
+                onChange={addItem}
+                options={itemOptions}
+              />
+            </div>
+            {!allSelected && (
+              <Button type="button" variant="outline" icon={Plus} onClick={addAllItems}>
+                Select all items{fullSet.price ? ` (full set ${inr(fullSet.price)})` : ''}
+              </Button>
+            )}
           </div>
+          {allSelected && fullSet.price > 0 && (
+            <p className="rounded-lg bg-gold-100/70 px-3 py-2 text-xs font-medium text-gold-900">
+              All {inStock.length} items selected: full set price {inr(fullSet.price)} applies. You can change the discount below.
+            </p>
+          )}
 
           {/* Rented Items List */}
           {selectedItems.length > 0 ? (
@@ -1422,8 +1405,23 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
               <span className="rounded-full bg-gold-100 px-3 py-1 text-xs font-bold text-gold-900">
                 Grand Total: {inr(totalRent)}
               </span>
+              {fullSet.discount > 0 && (
+                <p className="mt-1 text-[11px] text-stone-500">Items {inr(itemsTotal)} − discount {inr(fullSet.discount)}</p>
+              )}
             </div>
           </div>
+
+          <Field label="Discount (₹)" className="sm:max-w-xs"
+            hint={fullSet.fullSetApplied ? `Full set price ${inr(fullSet.price)} (items ${inr(itemsTotal)})`
+              : fullSet.typedByHand ? 'Typed by hand' : allSelected ? 'Items total is already within the full set price' : 'Select all items for the full set price, or type a discount'}>
+            <div className="flex gap-2">
+              <Input type="number" min="0" step="1" placeholder="0" className="bg-white font-medium"
+                value={fullSet.value} onChange={e => fullSet.setValue(e.target.value)} />
+              {fullSet.typedByHand && allSelected && (
+                <Button type="button" size="sm" variant="outline" onClick={fullSet.reset}>Use full set price</Button>
+              )}
+            </div>
+          </Field>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -1813,7 +1811,8 @@ function MoveModal({ item, type: initial, onClose, onSaved }) {
 function ItemModal({ item, categories = DEFAULT_SUPPLY_CATEGORIES, onClose, onSaved }) {
   const [f, setF] = useState(() =>
     item.id
-      ? { ...item }
+      // an older item may have no total saved: it is what's in stock plus what's out on rent
+      ? { ...item, total_quantity: Number(item.total_quantity) || (Number(item.quantity) || 0) + (Number(item.rented_quantity) || 0) }
       : {
           name: '',
           category: categories[0] || 'Banquet Furniture',

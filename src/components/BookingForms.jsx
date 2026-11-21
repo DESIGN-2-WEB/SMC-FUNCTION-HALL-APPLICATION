@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { CalendarCheck, CheckCircle2, LogIn, Plus, Smartphone, Trash2, Zap } from 'lucide-react';
+import { api } from '../api.js';
 import { useSave } from '../hooks.js';
 import { useSettings } from '../settings.jsx';
-import { EVENT_TYPES, METHODS, SLOTS, addDays, inr, nights, roomTimes, slotName, slotTime, today } from '../utils.js';
+import { EVENT_TYPES, METHODS, SLOTS, addDays, inr, nights, nowTime, roomTimes, slotName, slotTime, today } from '../utils.js';
 import { Button, Field, Form, Input, Modal, Segmented, Textarea, cn, useUI } from './ui.jsx';
 import { Combobox, DatePicker, Select } from './pickers.jsx';
+import HallAddons, { useHallAddons } from './HallAddons.jsx';
 
 function AdvanceFields({ f, set }) {
   return (
@@ -113,6 +115,7 @@ export function RoomBookingForm({ booking, guest, rooms, defaultRoomId, defaultD
       room_id: room?.id ?? '', guest_name: guest?.guest_name || '', phone: guest?.phone || '', guests: 1,
       id_proof: guest?.id_proof || '', id_photo_taken: !!guest?.id_photo_taken, address: guest?.address || '',
       check_in: ci, check_out: co, rate, discount: '', total, advance: '', method: 'Cash', notes: '',
+      checkin_time: nowTime(), // when the guest actually arrived (walk-in check-in)
     };
   });
   const [autoTotal, setAutoTotal] = useState(() => !editing || booking.total === Math.max(0, nights(booking.check_in, booking.check_out) * (booking.rate || 0) - (booking.discount || 0)));
@@ -172,7 +175,7 @@ export function RoomBookingForm({ booking, guest, rooms, defaultRoomId, defaultD
     return next;
   });
 
-  const times = roomTimes(settings);
+  const times = roomTimes(settings, rooms.find(r => r.id === Number(f.room_id)));
   const n = nights(f.check_in, f.check_out);
   const discAmount = Number(f.discount) || 0;
   const calcTotal = Math.max(0, n * Number(f.rate || 0) - Math.max(0, discAmount));
@@ -266,6 +269,11 @@ export function RoomBookingForm({ booking, guest, rooms, defaultRoomId, defaultD
         <Field label="Phone"><Input type="tel" required value={f.phone} onChange={e => set('phone', e.target.value)} placeholder="Mobile number" /></Field>
         <Field label="Check-in" hint={`From ${times.checkIn}`}><DatePicker required value={f.check_in} onChange={v => set('check_in', v)} /></Field>
         <Field label="Check-out" hint={`By ${times.checkOut}`}><DatePicker required value={f.check_out} min={addDays(f.check_in, 1)} onChange={v => set('check_out', v)} /></Field>
+        {!editing && !isReservation && (
+          <Field label="Check-in time" hint="When the guest arrived. The check-out time is entered when they leave.">
+            <Input type="time" required value={f.checkin_time || ''} onChange={e => set('checkin_time', e.target.value)} />
+          </Field>
+        )}
         <Field label="No. of guests"><Input type="number" min="1" required value={f.guests} onChange={e => set('guests', e.target.value)} /></Field>
         <Field label="ID proof" hint="Aadhaar / Driving licence / Passport no.">
           <Input required value={f.id_proof} onChange={e => set('id_proof', e.target.value)} placeholder="Aadhaar / DL / Passport number" />
@@ -405,7 +413,8 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
     const hall = halls.find(h => h.id === defaultHallId) || halls[0];
     const baseRent = rateFor(hall, 'full');
     return {
-      hall_id: hall?.id ?? '', customer_name: '', phone: '', event_type: eventTypes[0] || 'Wedding', event_date: defaultDate || today(),
+      hall_id: hall?.id ?? '', customer_name: '', phone: '', referral_name: '', referral_phone: '',
+      event_type: eventTypes[0] || 'Wedding', event_date: defaultDate || today(),
       slot: 'full', guests: '', rent: baseRent,
       power_start: '', power_end: '', power_units: '', power_rate: dbPowerRate, power_amount: 0,
       generator_type: '', generator_hours: '', generator_rate: 0, generator_amount: 0,
@@ -415,6 +424,11 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
 
   const [autoTotal, setAutoTotal] = useState(!editing);
   const [saving, save] = useSave('/hall-bookings', booking?.id, 'Booking', onSaved);
+  // Rooms, supplies and decoration the customer also wants (new bookings only)
+  const addons = useHallAddons(f.event_date);
+  const { toast } = useUI();
+  const [comboSaving, setComboSaving] = useState(false);
+  const asCombo = !editing && addons.any;
 
   const set = (k, v) => setF(prev => {
     const next = { ...prev, [k]: v };
@@ -463,15 +477,50 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
   const genVal = Number(f.generator_amount || 0);
   const calculatedTotal = rentVal + powerVal + genVal;
 
+  // Hall plus extras: one combined bill (combo) with one place to take payments
+  const saveCombo = async () => {
+    const problem = addons.problem();
+    if (problem) return toast(problem, 'error');
+    if (!f.phone?.trim()) return toast('Enter the customer phone number for a booking with extras', 'error');
+    setComboSaving(true);
+    try {
+      const pkg = await api('/packages', {
+        method: 'POST',
+        body: {
+          customer_name: f.customer_name, phone: f.phone, event_type: f.event_type, event_date: f.event_date, slot: f.slot,
+          guests: Number(f.guests) || 0, referral_name: f.referral_name, referral_phone: f.referral_phone,
+          hall_id: Number(f.hall_id), hall_rent: rentVal, notes: f.notes,
+          advance: Number(f.advance) || 0, payment_method: f.method,
+          ...addons.payload(),
+        },
+      });
+      toast(`Booked: hall and extras on one bill ${pkg.bill_no || ''}`.trim());
+      onSaved({ package: pkg });
+    } catch (err) {
+      toast(err.message, 'error');
+      setComboSaving(false);
+    }
+  };
+
   return (
     <Modal
       size="lg"
       title={editing ? 'Edit hall booking' : 'New hall booking'}
       subtitle={editing ? `Booking #${booking.id}` : 'Book SMC banquet hall for an event'}
       onClose={onClose}
-      footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button form="hall-form" type="submit" variant="gold" loading={saving}>{editing ? 'Save changes' : 'Create booking'}</Button></>}
+      footer={(
+        <div className="flex w-full flex-wrap items-center justify-between gap-3">
+          {asCombo ? (
+            <p className="text-sm text-stone-500">Total <span className="font-display text-lg font-semibold text-ink-900">{inr(rentVal + addons.total)}</span></p>
+          ) : <span />}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button form="hall-form" type="submit" variant="gold" loading={saving || comboSaving}>{editing ? 'Save changes' : 'Create booking'}</Button>
+          </div>
+        </div>
+      )}
     >
-      <Form id="hall-form" onSubmit={() => save({
+      <Form id="hall-form" onSubmit={() => (asCombo ? saveCombo() : save({
         ...f,
         hall_id: Number(f.hall_id),
         rent: rentVal,
@@ -484,7 +533,7 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
         generator_rate: Number(f.generator_rate) || 0,
         generator_amount: genVal,
         total: Number(f.total) || calculatedTotal,
-      })} className="grid gap-4 sm:grid-cols-2">
+      }))} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field as="div" label="Choose Hall" className="sm:col-span-2">
           <div className="grid gap-2 sm:grid-cols-3">
             {halls.map(h => (
@@ -509,6 +558,12 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
 
         <Field label="Customer name"><Input required value={f.customer_name} onChange={e => set('customer_name', e.target.value)} placeholder="Full name" /></Field>
         <Field label="Phone"><Input type="tel" value={f.phone} onChange={e => set('phone', e.target.value)} placeholder="Mobile number" /></Field>
+        <Field label="Referral name (optional)">
+          <Input value={f.referral_name || ''} onChange={e => set('referral_name', e.target.value)} placeholder="Who referred this customer" />
+        </Field>
+        <Field label="Referral number (optional)">
+          <Input type="tel" value={f.referral_phone || ''} onChange={e => set('referral_phone', e.target.value)} placeholder="Their mobile number" />
+        </Field>
         <Field label="Event type">
           <Combobox value={f.event_type} onChange={v => set('event_type', v)} options={eventTypes} placeholder="Wedding, engagement, half saree…" />
         </Field>
@@ -516,7 +571,7 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
 
         <Field as="div" label="Time slot" className="sm:col-span-2">
           <Segmented value={f.slot} onChange={v => set('slot', v)} options={Object.entries(SLOTS).map(([value, label]) => ({ value, label }))} />
-          {slotTime(f.slot, settings) && <p className="mt-1.5 text-xs text-stone-500">Hall timing: {slotTime(f.slot, settings)}</p>}
+          {slotTime(f.slot, settings, hall) && <p className="mt-1.5 text-xs text-stone-500">Hall timing: {slotTime(f.slot, settings, hall)}</p>}
         </Field>
 
         <Field label="Expected guests" hint={hall && Number(f.guests) > hall.capacity ? `Above hall capacity (${hall.capacity})` : undefined}>
@@ -588,24 +643,36 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
           </div>
         )}
 
-        <Field label={editing ? 'Final bill total (₹)' : 'Bill total now (₹)'} className="sm:col-span-2"
-          hint={!autoTotal ? 'Custom total entered manually' : editing ? 'Calculated automatically (Rent + Power + Gen)' : 'Hall rent. Power and generator are added on the event day'}>
-          <div className="flex gap-2">
-            <Input type="number" min="0" className="font-semibold text-lg" value={f.total}
-              onChange={e => { setAutoTotal(false); set('total', e.target.value); }} />
-            {!autoTotal && (
-              <Button type="button" size="sm" variant="outline" onClick={() => { setAutoTotal(true); set('total', calculatedTotal); }}>
-                Recalculate
-              </Button>
-            )}
-          </div>
-        </Field>
-
-        {!editing && (
-          <Field as="div" label="Booking status" className="sm:col-span-2">
-            <Segmented value={f.status} onChange={v => set('status', v)} options={[{ value: 'confirmed', label: 'Confirmed' }, { value: 'tentative', label: 'Tentative (hold)' }]} />
+        {/* With extras the total is the combined bill shown above */}
+        {!asCombo && (
+          <Field label={editing ? 'Final bill total (₹)' : 'Bill total now (₹)'} className="sm:col-span-2"
+            hint={!autoTotal ? 'Custom total entered manually' : editing ? 'Calculated automatically (Rent + Power + Gen)' : 'Hall rent. Power and generator are added on the event day'}>
+            <div className="flex gap-2">
+              <Input type="number" min="0" className="font-semibold text-lg" value={f.total}
+                onChange={e => { setAutoTotal(false); set('total', e.target.value); }} />
+              {!autoTotal && (
+                <Button type="button" size="sm" variant="outline" onClick={() => { setAutoTotal(true); set('total', calculatedTotal); }}>
+                  Recalculate
+                </Button>
+              )}
+            </div>
           </Field>
         )}
+
+        {!editing && <HallAddons addons={addons} />}
+
+        {asCombo && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gold-100/70 px-3.5 py-2.5 text-xs font-medium text-ink-900 sm:col-span-2">
+            <span>
+              Hall {inr(rentVal)}
+              {addons.roomsTotal > 0 && ` + Rooms ${inr(addons.roomsTotal)}`}
+              {addons.suppliesTotal > 0 && ` + Supplies ${inr(addons.suppliesTotal)}`}
+              {addons.decorTotal > 0 && ` + Decoration ${inr(addons.decorTotal)}`}
+            </span>
+            <span className="text-sm font-bold text-gold-900">{inr(rentVal + addons.total)}</span>
+          </div>
+        )}
+
         {!editing && <AdvanceFields f={f} set={set} />}
         <Field label="Notes" className="sm:col-span-2"><Textarea value={f.notes} onChange={e => set('notes', e.target.value)} placeholder="Decoration, catering, sound system, etc." /></Field>
       </Form>

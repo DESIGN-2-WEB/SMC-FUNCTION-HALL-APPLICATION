@@ -66,9 +66,9 @@ r.delete('/items/:id', requireAdmin, (req, res) => {
 
 const round2 = n => Math.round(n * 100) / 100;
 
-/** Clean up the plan's lines and work out every amount. */
-function parsePlan(b) {
-  const lines = Array.isArray(b.items) ? b.items : [];
+/** Clean up a plan's lines and work out every amount (also used when a combo is booked). */
+export function parseDecorLines(raw, rawDiscount) {
+  const lines = Array.isArray(raw) ? raw : [];
   if (lines.length > MAX_LINES) fail('Too many items in one plan');
   const items = lines
     .map(l => ({
@@ -81,7 +81,12 @@ function parsePlan(b) {
     .filter(l => l.area && l.name)
     .map(l => ({ ...l, amount: round2(l.qty * l.rate) }));
   const subtotal = round2(items.reduce((s, l) => s + l.amount, 0));
-  const discount = Math.min(subtotal, Math.max(0, num(b.discount)));
+  const discount = Math.min(subtotal, Math.max(0, num(rawDiscount)));
+  return { items, subtotal, discount, total: round2(subtotal - discount) };
+}
+
+function parsePlan(b) {
+  const { items, subtotal, discount, total } = parseDecorLines(b.items, b.discount);
   const d = {
     hall_booking_id: num(b.hall_booking_id) || null,
     customer_name: str(b.customer_name),
@@ -91,7 +96,7 @@ function parsePlan(b) {
     items: JSON.stringify(items),
     subtotal,
     discount,
-    total: round2(subtotal - discount),
+    total,
     notes: str(b.notes),
   };
   if (!d.customer_name) fail('Customer name is required');
@@ -102,9 +107,10 @@ function parsePlan(b) {
 }
 
 const PLAN_SQL = `
-  SELECT p.*, u.name AS created_by_name, h.name AS hall_name, hb.bill_no AS hall_bill_no
+  SELECT p.*, u.name AS created_by_name, h.name AS hall_name, hb.bill_no AS hall_bill_no, pk.bill_no AS combo_bill_no
   FROM decor_plans p
   LEFT JOIN users u ON u.id = p.created_by
+  LEFT JOIN event_packages pk ON pk.id = p.package_id
   LEFT JOIN hall_bookings hb ON hb.id = p.hall_booking_id
   LEFT JOIN halls h ON h.id = hb.hall_id`;
 

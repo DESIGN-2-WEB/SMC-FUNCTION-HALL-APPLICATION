@@ -7,7 +7,7 @@ import { useApi, useRemove } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
 import {
-  HALL_STATUS, METHODS, ROOM_STATUS, addDays, esc, fmtDate, fmtDateTime, inr, nights, lateCheckout, roomTimes, slotName, slotWithTime, today,
+  HALL_STATUS, METHODS, ROOM_STATUS, addDays, esc, fmtDate, fmtDateTime, inr, nights, nowTime, lateCheckout, roomTimes, slotName, slotWithTime, today,
 } from '../utils.js';
 import { Badge, Button, Field, Form, Input, Modal, PageLoader, cn, useUI } from './ui.jsx';
 import { DatePicker, Select } from './pickers.jsx';
@@ -27,6 +27,7 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
   const [chargesOpen, setChargesOpen] = useState(false);
   const [comboOpen, setComboOpen] = useState(false);
   const [comboWa, setComboWa] = useState(null);
+  const [stampFor, setStampFor] = useState(null); // 'checked_in' | 'checked_out' while asking the time
 
   const run = async (fn, msg) => {
     setBusy(true);
@@ -42,9 +43,9 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
       setBusy(false);
     }
   };
-  const setStatus = async (status, msg, ask) => {
+  const setStatus = async (status, msg, ask, extra = {}) => {
     if (ask && !(await confirm(ask))) return;
-    run(() => api(`/${kind}-bookings/${id}/status`, { method: 'PATCH', body: { status } }), msg);
+    return run(() => api(`/${kind}-bookings/${id}/status`, { method: 'PATCH', body: { status, ...extra } }), msg);
   };
   const addPayment = async () => {
     const ok = await run(() => api(`/${kind}-bookings/${id}/payments`, { method: 'POST', body: pay }), 'Payment recorded');
@@ -69,7 +70,7 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
   const balance = billTotal - billPaid;
   const closed = ['cancelled', 'checked_out', 'completed'].includes(b.status);
   const n = isRoom ? nights(b.check_in, b.check_out) : 0;
-  const times = roomTimes(settings);
+  const times = roomTimes(settings, b);
 
   const info = isRoom
     ? [
@@ -86,6 +87,7 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
             ) : null}
           </span>
         )], ['Address', b.address || '—'],
+        ...(b.checked_in_at ? [['Checked in at', fmtDateTime(b.checked_in_at)]] : []),
         ...(b.checked_out_at ? [['Checked out at', (
           <span className="inline-flex flex-wrap items-center gap-1.5">
             {fmtDateTime(b.checked_out_at)}
@@ -95,17 +97,20 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
       ]
     : [
         ['Hall', b.hall_name], ['Event', b.event_type || '—'],
-        ['Date', fmtDate(b.event_date)], ['Slot', slotWithTime(b.slot, settings)],
+        ['Date', fmtDate(b.event_date)], ['Slot', slotWithTime(b.slot, settings, b)],
         ['Expected guests', b.guests || '—'], ['Phone', b.phone || '—'],
+        // Shown only when filled in; kept for our records, not printed on bills or messages
+        ...(b.referral_name || b.referral_phone
+          ? [['Referred by', [b.referral_name, b.referral_phone].filter(Boolean).join(' · ')]]
+          : []),
       ];
 
   const actions = [];
+  // Check in / out asks when the guest actually arrived / left (now by default)
   if (isRoom && b.status === 'reserved')
-    actions.push(<Button key="in" variant="success" icon={LogIn} disabled={busy}
-      onClick={() => setStatus('checked_in', 'Guest checked in', b.check_in > today() && { title: 'Early check-in?', message: `This booking starts on ${fmtDate(b.check_in)}. Check in now anyway?`, confirmText: 'Check in' })}>Check in</Button>);
+    actions.push(<Button key="in" variant="success" icon={LogIn} disabled={busy} onClick={() => setStampFor('checked_in')}>Check in</Button>);
   if (isRoom && b.status === 'checked_in')
-    actions.push(<Button key="out" icon={LogOut} disabled={busy}
-      onClick={() => setStatus('checked_out', 'Guest checked out', balance > 0 && { title: 'Balance pending', message: `${inr(balance)} is still due from ${b.guest_name}. Check out anyway?`, confirmText: 'Check out' })}>Check out</Button>);
+    actions.push(<Button key="out" icon={LogOut} disabled={busy} onClick={() => setStampFor('checked_out')}>Check out</Button>);
   // Hall power & generator: from the event day until the event is completed (admin any time)
   const hasExtras = Number(b.power_amount) > 0 || Number(b.generator_amount) > 0;
   const eventDayReached = !isRoom && b.event_date <= today();
@@ -113,7 +118,8 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
     && (isAdmin || (['tentative', 'confirmed'].includes(b.status) && eventDayReached));
   if (!isRoom && b.status === 'tentative')
     actions.push(<Button key="conf" variant="success" icon={CalendarCheck} disabled={busy} onClick={() => setStatus('confirmed', 'Booking confirmed')}>Confirm</Button>);
-  if (!isRoom && b.status === 'confirmed')
+  // Completing is possible only from the event's own date (the server checks this too)
+  if (!isRoom && b.status === 'confirmed' && eventDayReached)
     actions.push(<Button key="done" icon={CircleCheck} disabled={busy}
       onClick={() => setStatus('completed', 'Event marked completed', (balance > 0 || !hasExtras) && {
         title: 'Mark this event completed?',
@@ -170,6 +176,19 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
       }
     >
       {waOpen && <WhatsAppModal kind={kind} booking={b} onClose={() => setWaOpen(false)} />}
+      {stampFor && (
+        <StampModal
+          checkIn={stampFor === 'checked_in'}
+          booking={b}
+          balance={balance}
+          busy={busy}
+          onClose={() => setStampFor(null)}
+          onConfirm={async at => {
+            const ok = await setStatus(stampFor, stampFor === 'checked_in' ? 'Guest checked in' : 'Guest checked out', null, { at });
+            if (ok) setStampFor(null);
+          }}
+        />
+      )}
       {extending && (
         <ExtendStayModal
           booking={b}
@@ -263,7 +282,8 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
       )}
       {comboOpen && (
         <PackageDetailModal packageId={b.package_id} onClose={() => setComboOpen(false)}
-          onRefresh={async () => { await reload(); onChanged?.(); }} onShareWa={setComboWa} />
+          onRefresh={async () => { await reload(); onChanged?.(); }} onShareWa={setComboWa}
+          onDeleted={() => { setComboOpen(false); onChanged?.(); onClose(); }} />
       )}
       {comboWa && <WhatsAppModal kind="package" booking={comboWa} onClose={() => setComboWa(null)} />}
 
@@ -302,6 +322,33 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
           <Button type="submit" variant="gold" icon={IndianRupee} loading={busy}>Add</Button>
         </Form>
       )}
+    </Modal>
+  );
+}
+
+/** Asks the actual date and time a guest arrived or left (today and now to start). */
+function StampModal({ checkIn, booking: b, balance, busy, onClose, onConfirm }) {
+  const [date, setDate] = useState(today());
+  const [time, setTime] = useState(nowTime());
+  const early = checkIn && b.check_in > date;
+  return (
+    <Modal size="sm" onClose={onClose}
+      title={checkIn ? `Check in ${b.guest_name}` : `Check out ${b.guest_name}`}
+      subtitle={checkIn ? 'When did the guest arrive?' : 'When is the guest leaving?'}
+      footer={<><Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button variant={checkIn ? 'success' : 'primary'} icon={checkIn ? LogIn : LogOut} loading={busy}
+          onClick={() => onConfirm(`${date} ${time}`)} disabled={!date || !time}>{checkIn ? 'Check in' : 'Check out'}</Button></>}>
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={checkIn ? 'Check-in date' : 'Check-out date'} as="div"><DatePicker value={date} onChange={setDate} /></Field>
+          <Field label={checkIn ? 'Check-in time' : 'Check-out time'}><Input type="time" value={time} onChange={e => setTime(e.target.value)} /></Field>
+        </div>
+        {early && <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">This booking starts on {fmtDate(b.check_in)}. Checking in early.</p>}
+        {!checkIn && balance > 0 && (
+          <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{inr(balance)} is still due from {b.guest_name}.</p>
+        )}
+        {!checkIn && b.checked_in_at && <p className="text-xs text-stone-500">Checked in at {fmtDateTime(b.checked_in_at)}.</p>}
+      </div>
     </Modal>
   );
 }
@@ -417,9 +464,10 @@ function printReceipt(kind, b, settings) {
   const rows = isRoom
     ? [
         ['Room', b.room_name],
-        ['Check-in', `${fmtDate(b.check_in)}, ${roomTimes(settings).checkIn}`],
-        ['Check-out', `${fmtDate(b.check_out)}, ${roomTimes(settings).checkOut}`],
+        ['Check-in', `${fmtDate(b.check_in)}, ${roomTimes(settings, b).checkIn}`],
+        ['Check-out', `${fmtDate(b.check_out)}, ${roomTimes(settings, b).checkOut}`],
         ['Nights', nights(b.check_in, b.check_out)],
+        ...(b.checked_in_at ? [['Checked in at', fmtDateTime(b.checked_in_at)]] : []),
         ...(b.checked_out_at ? [['Checked out at', `${fmtDateTime(b.checked_out_at)}${lateCheckout(b, settings) ? ' (late check-out)' : ''}`]] : []),
         ['Rate', `${inr(b.rate)} / night`],
         ...(Number(b.discount) > 0 ? [['Discount', `-${inr(b.discount)}`]] : []),
@@ -427,7 +475,7 @@ function printReceipt(kind, b, settings) {
         ['Guests', b.guests],
       ]
     : [
-        ['Hall', `${b.hall_name} (${slotWithTime(b.slot, settings)})`],
+        ['Hall', `${b.hall_name} (${slotWithTime(b.slot, settings, b)})`],
         ['Event', b.event_type || '—'],
         ['Date', fmtDate(b.event_date)],
         ['Expected guests', b.guests || '—'],

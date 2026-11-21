@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
-  BedDouble, ChevronLeft, ChevronRight, Flower2, LayoutDashboard, Layers, LogOut, Menu, Package, PartyPopper, SlidersHorizontal, Users, Wallet, X,
+  BedDouble, ChevronLeft, ChevronRight, Flower2, LayoutDashboard, LogOut, Menu, Package, PartyPopper, SlidersHorizontal, Users, Wallet, X,
 } from 'lucide-react';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
@@ -13,7 +13,6 @@ import { usePageEnter, useStaggerIn } from '../motion.js';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/combos', label: 'Combo', icon: Layers },
   { to: '/rooms', label: 'Rooms', icon: BedDouble },
   { to: '/halls', label: 'Banquet Halls', icon: PartyPopper },
   { to: '/supplies', label: 'Supplies', icon: Package },

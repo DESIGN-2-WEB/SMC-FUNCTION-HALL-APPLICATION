@@ -27,6 +27,7 @@ const parse = b => {
   const d = {
     number: str(b.number), name: str(b.name), type: str(b.type) || 'AC Room', rate: num(b.rate),
     capacity: Math.max(1, num(b.capacity, 2)), amenities: str(b.amenities), maintenance: b.maintenance ? 1 : 0,
+    checkin_time: str(b.checkin_time).slice(0, 40) || '11:00 AM', checkout_time: str(b.checkout_time).slice(0, 40) || '12:00 PM',
   };
   if (!d.number || !d.name) fail('Room number and name are required');
   if (d.rate < 0) fail('Rate cannot be negative');
@@ -38,8 +39,8 @@ r.get('/', (req, res) => res.json(roomsWithStatus()));
 
 r.post('/', requireAdmin, (req, res) => {
   const d = parse(req.body);
-  const { id } = run('INSERT INTO rooms (number, name, type, rate, capacity, amenities, maintenance) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    d.number, d.name, d.type, d.rate, d.capacity, d.amenities, d.maintenance);
+  const { id } = run('INSERT INTO rooms (number, name, type, rate, capacity, amenities, maintenance, checkin_time, checkout_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    d.number, d.name, d.type, d.rate, d.capacity, d.amenities, d.maintenance, d.checkin_time, d.checkout_time);
   log(req.user.id, 'room added', `${d.number} · ${d.name}`);
   res.status(201).json({ id });
 });
@@ -47,8 +48,8 @@ r.post('/', requireAdmin, (req, res) => {
 r.put('/:id', requireAdmin, (req, res) => {
   const room = load(req.params.id);
   const d = parse(req.body);
-  run('UPDATE rooms SET number = ?, name = ?, type = ?, rate = ?, capacity = ?, amenities = ?, maintenance = ? WHERE id = ?',
-    d.number, d.name, d.type, d.rate, d.capacity, d.amenities, d.maintenance, room.id);
+  run('UPDATE rooms SET number = ?, name = ?, type = ?, rate = ?, capacity = ?, amenities = ?, maintenance = ?, checkin_time = ?, checkout_time = ? WHERE id = ?',
+    d.number, d.name, d.type, d.rate, d.capacity, d.amenities, d.maintenance, d.checkin_time, d.checkout_time, room.id);
   log(req.user.id, 'room updated', `${d.number} · ${d.name} · ${inr(d.rate)}/night`);
   res.json({ ok: true });
 });

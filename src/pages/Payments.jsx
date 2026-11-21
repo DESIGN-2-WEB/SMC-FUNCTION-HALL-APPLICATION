@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { BedDouble, IndianRupee, PartyPopper, Trash2, Wallet } from 'lucide-react';
+import { BedDouble, Drum, IndianRupee, PartyPopper, Trash2, Wallet } from 'lucide-react';
 import { useApi, useRemove } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import { Badge, Button, Card, EmptyState, Field, PageHeader, StatCard, cn } from '../components/ui.jsx';
@@ -89,13 +89,13 @@ export default function Payments() {
                   <tr key={p.id} className="transition hover:bg-gold-50/40">
                     <td className="td whitespace-nowrap">{fmtDate(p.paid_on)}</td>
                     <td className="td min-w-56">
-                      <button className="cursor-pointer text-left font-medium text-ink-900 hover:text-gold-600" onClick={() => nav(`/${p.kind === 'room' ? 'rooms' : 'halls'}?booking=${p.booking_id}`)}>
+                      <button className="cursor-pointer text-left font-medium text-ink-900 hover:text-gold-600" onClick={() => nav(p.kind === 'band' ? '/supplies' : `/${p.kind === 'room' ? 'rooms' : 'halls'}?booking=${p.booking_id}`)}>
                         {p.party || `Booking #${p.booking_id}`}
                       </button>
                       {p.note && <p className="text-xs text-stone-500">{p.note}</p>}
                     </td>
                     <td className="td whitespace-nowrap">
-                      <span className="flex items-center gap-1.5">{p.kind === 'room' ? <BedDouble size={14} className="text-sky-600" /> : <PartyPopper size={14} className="text-gold-600" />}{p.unit || '—'}</span>
+                      <span className="flex items-center gap-1.5">{p.kind === 'room' ? <BedDouble size={14} className="text-sky-600" /> : p.kind === 'band' ? <Drum size={14} className="text-violet-600" /> : <PartyPopper size={14} className="text-gold-600" />}{p.unit || '—'}</span>
                     </td>
                     <td className="td"><Badge>{p.method}</Badge></td>
                     <td className="td max-w-36 text-stone-500">{p.created_by_name || '—'}</td>

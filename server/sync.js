@@ -28,6 +28,7 @@ const TABLES = [
   ['supply_rentals', 'id'],
   ['decor_items', 'id'],
   ['decor_plans', 'id'],
+  ['band_bookings', 'id'],
   ['user_sessions', 'id'],
   ['activity', 'id'],
 ];

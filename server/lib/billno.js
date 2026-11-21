@@ -2,12 +2,12 @@ import { all, get, run, today } from '../db.js';
 
 /*
  * Bill numbers printed on receipts and WhatsApp messages, e.g. "SMC-R-26-0001":
- * the hall code, the kind (R room, H banquet hall, S supplies, C combo, D decoration), the
+ * the hall code, the kind (R room, H banquet hall, S supplies, C combo, D decoration, B band melam), the
  * year the booking was made (26 = 2026) and a running number for that kind in that year.
  * The number has no day or month in it, so it is never mistaken for a date. The database id
  * stays internal.
  */
-const LETTER = { room_bookings: 'R', hall_bookings: 'H', supply_rentals: 'S', event_packages: 'C', decor_plans: 'D' };
+const LETTER = { room_bookings: 'R', hall_bookings: 'H', supply_rentals: 'S', event_packages: 'C', decor_plans: 'D', band_bookings: 'B' };
 export const BILL_TABLES = Object.keys(LETTER);
 
 const CODE = 'SMC';

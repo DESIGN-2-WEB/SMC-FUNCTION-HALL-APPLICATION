@@ -190,8 +190,8 @@ function RoomCard({ room: r, index, isAdmin, onOpen, onEdit, onDelete }) {
 
 function RoomForm({ room, onClose, onSaved }) {
   const [f, setF] = useState(() => room.id
-    ? { ...room, maintenance: !!room.maintenance }
-    : { number: '', name: '', type: 'AC Room', rate: 2000, capacity: 2, amenities: '', maintenance: false });
+    ? { ...room, maintenance: !!room.maintenance, checkin_time: room.checkin_time || '11:00 AM', checkout_time: room.checkout_time || '12:00 PM' }
+    : { number: '', name: '', type: 'AC Room', rate: 2000, capacity: 2, amenities: '', maintenance: false, checkin_time: '11:00 AM', checkout_time: '12:00 PM' });
   const [saving, save] = useSave('/rooms', room.id, 'Room', onSaved);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
@@ -206,6 +206,12 @@ function RoomForm({ room, onClose, onSaved }) {
         <Field label="Display name" className="sm:col-span-2"><Input required value={f.name} onChange={e => set('name', e.target.value)} /></Field>
         <Field label="Rate per night (₹)"><Input type="number" min="0" required value={f.rate} onChange={e => set('rate', e.target.value)} /></Field>
         <Field label="Max guests"><Input type="number" min="1" value={f.capacity} onChange={e => set('capacity', e.target.value)} /></Field>
+        <Field label="Check-in time" hint="Shown on bookings, receipts and WhatsApp">
+          <Input value={f.checkin_time} onChange={e => set('checkin_time', e.target.value)} placeholder="11:00 AM" />
+        </Field>
+        <Field label="Check-out time" hint="Leaving later is marked as late check-out">
+          <Input value={f.checkout_time} onChange={e => set('checkout_time', e.target.value)} placeholder="12:00 PM" />
+        </Field>
         <Field label="Amenities" className="sm:col-span-2"><Textarea value={f.amenities} onChange={e => set('amenities', e.target.value)} /></Field>
         <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-stone-200 p-4 sm:col-span-2">
           <input type="checkbox" className="h-4 w-4 accent-amber-600" checked={f.maintenance} onChange={e => set('maintenance', e.target.checked)} />

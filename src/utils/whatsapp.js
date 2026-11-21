@@ -50,7 +50,7 @@ function property(settings) {
 }
 
 // "Full day · 7:00 AM to 3:00 AM (next day)"
-const timing = (slot, settings) => [slotName(slot), slotTime(slot, settings)].filter(Boolean).join(' · ');
+const timing = (slot, settings, hall) => [slotName(slot), slotTime(slot, settings, hall)].filter(Boolean).join(' · ');
 const money = n => Math.max(0, Number(n) || 0);
 const lastPayment = payments => (Array.isArray(payments) && payments.length ? payments[payments.length - 1] : null);
 const bullets = rows => rows.filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `• ${k}: ${v}`).join('\n');
@@ -110,7 +110,7 @@ function paymentReceived(payments, balance) {
  */
 export function buildRoomMessage(b, settings, type = 'booking') {
   const n = nights(b.check_in, b.check_out);
-  const t = roomTimes(settings);
+  const t = roomTimes(settings, b);
   const checkedIn = b.status === 'checked_in';
   const when = type === 'check_out' ? 'soon' : checkedIn ? 'check_out' : 'check_in';
   const status = paymentStatus({ total: Number(b.total) || 0, paid: Number(b.paid) || 0, when });
@@ -120,6 +120,7 @@ export function buildRoomMessage(b, settings, type = 'booking') {
     ['Check-in', `${fmtDate(b.check_in)}, ${t.checkIn}`],
     ['Check-out', `${fmtDate(b.check_out)}, ${t.checkOut} (${n} night${n === 1 ? '' : 's'})`],
     ['Guests', b.guests],
+    ...(b.checked_in_at ? [['Checked in at', fmtDateTime(b.checked_in_at)]] : []),
     ...(b.checked_out_at ? [['Checked out at', fmtDateTime(b.checked_out_at)]] : []),
   ];
 
@@ -169,7 +170,7 @@ export function buildHallMessage(b, settings, type = 'booking') {
     ['Hall', b.hall_name],
     ['Event', b.event_type || 'Function'],
     ['Date', fmtDate(b.event_date)],
-    ['Timing', timing(b.slot, settings)],
+    ['Timing', timing(b.slot, settings, b)],
     ...(b.guests ? [['Guests', b.guests]] : []),
   ];
   const bill = [
@@ -223,10 +224,11 @@ export function buildPackageMessage(pkg, settings, type = 'booking') {
   const details = [
     ['Bill No', pkg.bill_no],
     ['Event', pkg.event_type || 'Function'],
-    ['Date', `${fmtDate(pkg.event_date)} (${timing(pkg.slot, settings)})`],
+    ['Date', `${fmtDate(pkg.event_date)} (${timing(pkg.slot, settings, pkg.hall)})`],
     ...(pkg.hall ? [['Hall', `${pkg.hall.hall_name} — ${inr(pkg.hall_amount || pkg.hall.rent)}`]] : []),
     ...(pkg.rooms?.length ? [['Rooms', `${pkg.rooms.map(r => r.room_name).join(', ')} — ${inr(pkg.rooms_amount)}`]] : []),
     ...(pkg.supplies?.length ? [['Supplies', `${pkg.supplies.length} item${pkg.supplies.length > 1 ? 's' : ''} — ${inr(pkg.supplies_amount)}`]] : []),
+    ...(Number(pkg.decor_amount) > 0 ? [['Decoration', `${[...new Set((pkg.decor || []).flatMap(p => (p.items || []).map(i => i.area)))].join(', ')} — ${inr(pkg.decor_amount)}`]] : []),
   ];
   const bill = [
     ...(Number(pkg.extras_amount) > 0 ? [['Power & generator', inr(pkg.extras_amount)]] : []),
@@ -299,8 +301,9 @@ export function buildBulkRentalMessage(order, settings) {
   const status = paymentStatus({ total, paid: Math.min(total, advance), when: 'return' });
   const list = items.map((it, i) => {
     const unit = it.supply_unit || it.unit || 'pcs';
-    return `${i + 1}. ${it.supply_name || it.name} — ${it.quantity} ${unit} × ₹${it.rent_rate} = ${inr(it.total_rent || it.quantity * it.rent_rate)}`;
+    return `${i + 1}. ${it.supply_name || it.name} — ${it.quantity} ${unit} × ₹${it.rent_rate} = ${inr(it.quantity * it.rent_rate)}`;
   }).join('\n');
+  const discount = items.reduce((s, it) => s + (Number(it.discount) || 0), 0);
   return compose(settings, {
     name: order.customer_name, detailsTitle: `Items rented (${items.length})`,
     details: [
@@ -309,7 +312,7 @@ export function buildBulkRentalMessage(order, settings) {
       ['Dispatched on', fmtDate(order.rent_date || today())],
       ...(order.expected_return_date ? [['Return by', fmtDate(order.expected_return_date)]] : []),
     ],
-    bill: status.bill,
+    bill: [...(discount > 0 ? [['Items', inr(total + discount)], ['Discount (full set)', `- ${inr(discount)}`]] : []), ...status.bill],
     en: [`Here are the catering items sent for your function:\n${list}`, status.en],
     te: ['మీ వేడుక కోసం పంపిన సామాగ్రి వివరాలు పైన ఇవ్వబడ్డాయి.', status.te],
   });
@@ -340,5 +343,43 @@ export function buildDecorMessage(plan, settings) {
     ],
     en: [`Here is the decoration plan for your function:\n\n${list}`, 'Please tell us if you would like to change anything.'],
     te: ['మీ వేడుక కోసం అలంకరణ వివరాలు పైన ఇవ్వబడ్డాయి.', 'ఏమైనా మార్పులు కావాలంటే దయచేసి మాకు తెలియజేయండి.'],
+  });
+}
+
+/** Band Melam booked for an event (a performance, not an item). */
+export function buildBandMessage(b, settings) {
+  const status = paymentStatus({ total: Number(b.amount) || 0, paid: Number(b.paid) || 0, when: b.status === 'done' ? 'soon' : 'event' });
+  const done = b.status === 'done';
+  return compose(settings, {
+    name: b.customer_name, detailsTitle: 'Band Melam details',
+    details: [
+      ['Bill No', b.bill_no],
+      ['Event date', fmtDate(b.event_date)],
+      ...(b.timing ? [['Timing', b.timing]] : []),
+      ...(b.team ? [['Team', b.team]] : []),
+      ...(Number(b.players) ? [['Players', b.players]] : []),
+      ...(b.hall_name ? [['Hall', b.hall_name]] : []),
+    ],
+    bill: status.bill,
+    en: [done ? 'Thank you for choosing our Band Melam for your function! 🙏' : 'Your Band Melam booking is *confirmed*. 🥁', status.en],
+    te: [done ? 'మీ వేడుకకు మా బ్యాండ్ మేళాన్ని ఎంచుకున్నందుకు ధన్యవాదాలు! 🙏' : 'మీ బ్యాండ్ మేళం బుకింగ్ *నిర్ధారించబడింది*. 🥁', status.te],
+  });
+}
+
+/** Sent to the band team: when and where to perform (no money in it). */
+export function buildBandTeamMessage(b, settings) {
+  return compose(settings, {
+    name: b.team || 'Band team', detailsTitle: 'Programme details',
+    details: [
+      ['Function', [b.hall_event_type, b.customer_name].filter(Boolean).join(' · ') || b.customer_name],
+      ['Date', fmtDate(b.event_date)],
+      ['Programme timing', b.timing || 'To be confirmed'],
+      ...(b.hall_name ? [['Venue', b.hall_name]] : []),
+      ...(Number(b.players) ? [['Players', b.players]] : []),
+      ...(b.phone ? [['Customer phone', b.phone]] : []),
+      ...(b.notes ? [['Notes', b.notes]] : []),
+    ],
+    en: ['Here is your Band Melam programme. Please reach the venue before the programme timing. 🥁'],
+    te: ['మీ బ్యాండ్ మేళం కార్యక్రమం వివరాలు పైన ఉన్నాయి. దయచేసి కార్యక్రమ సమయానికి ముందే వేదిక వద్దకు చేరుకోండి. 🥁'],
   });
 }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { all, get, pruneActivity, today } from '../db.js';
 import { roomsWithStatus } from './rooms.js';
+import { decorTotalSql } from '../lib/combo.js';
 
 const r = Router();
 export default r;
@@ -34,13 +35,13 @@ r.get('/dashboard', (req, res) => {
     })),
     // A combo's hall and rooms show what is due on the whole combo
     upcoming: all(`SELECT b.id, b.customer_name, b.event_type, b.event_date, b.slot, b.guests, b.status, h.name AS hall_name,
-                     COALESCE(pk.total_amount + b.power_amount + b.generator_amount, b.total) AS total, COALESCE(pk.advance_paid, b.paid) AS paid
+                     COALESCE(pk.total_amount + b.power_amount + b.generator_amount + ${decorTotalSql('pk')}, b.total) AS total, COALESCE(pk.advance_paid, b.paid) AS paid
                    FROM hall_bookings b JOIN halls h ON h.id = b.hall_id LEFT JOIN event_packages pk ON pk.id = b.package_id
                    WHERE b.event_date >= ? AND b.status IN ('tentative','confirmed') ORDER BY b.event_date, b.slot LIMIT 6`, t),
     arrivals: all(`SELECT b.id, b.guest_name, b.check_in, r.name AS room_name FROM room_bookings b
                    JOIN rooms r ON r.id = b.room_id WHERE b.status = 'reserved' AND b.check_in <= ? AND b.check_out > ? ORDER BY b.check_in`, t, t),
     departures: all(`SELECT b.id, b.guest_name, b.check_out, r.name AS room_name,
-                       COALESCE(pk.total_amount + COALESCE(ph.power_amount, 0) + COALESCE(ph.generator_amount, 0) - pk.advance_paid, b.total - b.paid) AS balance
+                       COALESCE(pk.total_amount + COALESCE(ph.power_amount, 0) + COALESCE(ph.generator_amount, 0) + ${decorTotalSql('pk')} - pk.advance_paid, b.total - b.paid) AS balance
                      FROM room_bookings b JOIN rooms r ON r.id = b.room_id
                      LEFT JOIN event_packages pk ON pk.id = b.package_id LEFT JOIN hall_bookings ph ON ph.id = pk.hall_booking_id WHERE b.status = 'checked_in' AND b.check_out <= ? ORDER BY b.check_out`, t),
     collectedToday: sum('paid_on = ?', t),
@@ -49,8 +50,9 @@ r.get('/dashboard', (req, res) => {
     dues: get(`SELECT COALESCE(SUM(MAX(total - paid, 0)), 0) AS v FROM (
                  SELECT total, paid FROM room_bookings WHERE status <> 'cancelled' AND COALESCE(package_id, 0) = 0
                  UNION ALL SELECT total, paid FROM hall_bookings WHERE status <> 'cancelled' AND COALESCE(package_id, 0) = 0
-                 UNION ALL SELECT p.total_amount + COALESCE(h.power_amount, 0) + COALESCE(h.generator_amount, 0), p.advance_paid
-                   FROM event_packages p LEFT JOIN hall_bookings h ON h.id = p.hall_booking_id WHERE p.status <> 'cancelled')`).v,
+                 UNION ALL SELECT p.total_amount + COALESCE(h.power_amount, 0) + COALESCE(h.generator_amount, 0) + ${decorTotalSql('p')}, p.advance_paid
+                   FROM event_packages p LEFT JOIN hall_bookings h ON h.id = p.hall_booking_id WHERE p.status <> 'cancelled'
+                 UNION ALL SELECT amount, paid FROM band_bookings WHERE status <> 'cancelled')`).v,
     lowStock: all('SELECT * FROM supplies WHERE quantity <= min_quantity ORDER BY quantity * 1.0 / MAX(min_quantity, 1) LIMIT 8'),
     trend: lastSixMonths(),
     recent: req.user.role === 'admin'

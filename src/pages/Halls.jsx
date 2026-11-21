@@ -7,9 +7,8 @@ import { useSettings } from '../settings.jsx';
 import { api } from '../api.js';
 import BookingDetail from '../components/BookingDetail.jsx';
 import { HallBookingForm } from '../components/BookingForms.jsx';
-import BulkPackageModal from '../components/BulkPackageModal.jsx';
 import PackageDetailModal from '../components/PackageDetailModal.jsx';
-import ComboTable from '../components/ComboTable.jsx';
+import PowerUsageModal from '../components/PowerUsageModal.jsx';
 import WhatsAppModal from '../components/WhatsAppModal.jsx';
 import {
   Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, PageLoader, Segmented, Textarea, cn, useUI,
@@ -19,8 +18,6 @@ import { useRowsReveal } from '../motion.js';
 
 const FILTERS = [
   { value: 'upcoming', label: 'Upcoming' },
-  { value: 'packages', label: 'Combos' },
-  { value: 'tentative', label: 'Tentative' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
   { value: 'all', label: 'All' },
@@ -44,8 +41,8 @@ export default function Halls() {
   const [form, setForm] = useState(null);
   const [detailId, setDetailId] = useState(null);
   const [hallForm, setHallForm] = useState(null);
-  const [bulkPackageModal, setBulkPackageModal] = useState(false);
   const [selectedPackageId, setSelectedPackageId] = useState(null);
+  const [powerOpen, setPowerOpen] = useState(false);
   const [waPackage, setWaPackage] = useState(null);
 
   // Event Categories Section State
@@ -100,7 +97,7 @@ export default function Halls() {
 
   useEffect(() => {
     if (params.get('new')) setForm({ hallId: Number(params.get('hall')) || undefined, date: params.get('date') || undefined });
-    if (params.get('package')) setBulkPackageModal(true);
+    if (params.get('package')) setForm({}); // old link: rooms and supplies are now added in the hall booking form
     if (params.get('booking')) setDetailId(Number(params.get('booking')));
     if ([...params.keys()].length) setParams({}, { replace: true });
   }, []); // run once on page load
@@ -114,8 +111,22 @@ export default function Halls() {
   if (!halls.data) return <PageLoader />;
 
   // Upcoming list reads best in date order
-  const list = filter === 'upcoming' ? [...(bookings.data || [])].reverse() : bookings.data || [];
   const packagesList = packagesApi.data || [];
+  // A hall booked with rooms, supplies or decoration (a combo) is listed like any hall booking,
+  // marked "Hall + add-ons"; it opens its combined bill. Older combos saved without a hall are
+  // added as rows of their own so none goes missing.
+  const comboById = Object.fromEntries(packagesList.map(p => [p.id, p]));
+  const comboStatus = p => (p.status === 'cancelled' ? 'cancelled' : p.status === 'completed' ? 'completed' : 'confirmed');
+  const hallLessCombos = packagesList
+    .filter(p => !p.hall_booking_id)
+    .filter(p => filter === 'all' || (filter === 'upcoming' ? comboStatus(p) === 'confirmed' && p.event_date >= today() : comboStatus(p) === filter))
+    .map(p => ({
+      id: `combo-${p.id}`, package_id: p.id, hallLess: true, event_date: p.event_date, slot: p.slot, customer_name: p.customer_name,
+      phone: p.phone, hall_name: '—', event_type: p.event_type, guests: 0, status: comboStatus(p),
+      combo_total: p.grand_total, combo_paid: p.advance_paid, total: p.grand_total,
+    }));
+  const byDate = (x, y) => (filter === 'upcoming' ? x.event_date.localeCompare(y.event_date) : y.event_date.localeCompare(x.event_date));
+  const list = [...(bookings.data || []), ...hallLessCombos].sort(byDate);
 
   let generatorsList = [];
   try {
@@ -138,15 +149,11 @@ export default function Halls() {
         title="Banquet Halls"
         subtitle={`${settings.property_name || 'SMC Function Hall (A/C)'} · ${settings.property_tagline || 'Kalyana Mandapam'} · ${settings.address || 'Palasa – Kasibugga'}${settings.phone ? ` · ${settings.phone}` : ''}`}
         actions={<>
-          <Button
-            variant="gold"
-            icon={Sparkles}
-            onClick={() => setBulkPackageModal(true)}
-          >
-            Combo booking
-          </Button>
-          <Button variant="outline" icon={Plus} onClick={() => setForm({})}>
+          <Button variant="gold" icon={Plus} onClick={() => setForm({})}>
             New Hall Booking
+          </Button>
+          <Button variant="outline" icon={Zap} onClick={() => setPowerOpen(true)}>
+            Power usage
           </Button>
           {isAdmin && (
             <>
@@ -164,52 +171,13 @@ export default function Halls() {
       />
 
       {/* Tariff & Extra Charges Reference Bar */}
-      <div className="mb-6 rounded-2xl border border-gold-200 bg-gold-50/60 p-4 text-xs text-ink-900 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gold-200/80 pb-2.5">
+      <div className="mb-6 rounded-2xl border border-gold-200 bg-gold-50/60 px-4 py-3 text-xs text-ink-900">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Zap size={14} className="text-gold-700" />
             <span className="font-semibold text-gold-900 tracking-wide uppercase">Tariff & Extra Charges (Database Configured)</span>
           </div>
           <span className="text-stone-500 font-medium">Formula: Final bill = Hall rent + Power bill + Generator bill</span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-gold-200/70 bg-white/80 p-3">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-gold-900">Both Halls Combo</span>
-              <span className="rounded-full bg-gold-100 px-2 py-0.5 text-[10px] font-bold text-gold-800 uppercase tracking-wider">Combo</span>
-            </div>
-            <p className="mt-1 text-ink-900">
-              Full day: <b>{inr(comboHall?.rate_full ?? 90000)}</b> · Half day: <b>{inr(comboHall?.rate_half ?? 47000)}</b>
-            </p>
-            <p className="mt-0.5 text-[11px] text-stone-500">Big Banquet + Small Banquet Halls</p>
-          </div>
-
-          <div className="rounded-xl border border-gold-200/70 bg-white/80 p-3">
-            <span className="font-semibold text-gold-900">Power Bill</span>
-            <p className="mt-1 text-ink-900">
-              <b>₹{settings.power_rate || 15}</b> per unit
-            </p>
-            <p className="mt-0.5 text-[11px] text-stone-500">Units = Ending reading − Starting reading</p>
-          </div>
-
-          <div className="rounded-xl border border-gold-200/70 bg-white/80 p-3">
-            <span className="font-semibold text-gold-900">Generator Bill</span>
-            <p className="mt-1 text-ink-900">
-              {generatorsList.length > 0
-                ? generatorsList.map(g => `${g.name} @ ${inr(g.rate)}/hr`).join(' · ')
-                : 'None configured'}
-            </p>
-            <p className="mt-0.5 text-[11px] text-stone-500">Charged per hour of use</p>
-          </div>
-
-          <div className="rounded-xl border border-gold-200/70 bg-white/80 p-3">
-            <span className="font-semibold text-gold-900">Billing Example</span>
-            <p className="mt-1 text-ink-900">
-              Combo half day ({inr(comboHall?.rate_half ?? 47000)}) + 200 units (₹3,000) + Gen 3 hrs (₹4,500) = <b>{inr((comboHall?.rate_half ?? 47000) + 7500)}</b>
-            </p>
-            <p className="mt-0.5 text-[11px] text-stone-500">Big hall half day: {inr(42000 + 7500)}</p>
-          </div>
         </div>
       </div>
 
@@ -416,22 +384,7 @@ export default function Halls() {
             <Input className="pl-9" placeholder="Search customer or phone" value={q} onChange={e => setQ(e.target.value)} />
           </div>
         </div>
-        {filter === 'packages' ? (
-          packagesList.length ? (
-            <ComboTable combos={packagesList} onOpen={setSelectedPackageId} />
-          ) : (
-            <EmptyState
-              icon={Sparkles}
-              title={packagesApi.loading ? 'Loading combos…' : 'No combos found'}
-              text={q ? 'No combos match your search.' : 'Book a hall, guest rooms and catering supplies on one combined bill.'}
-              action={
-                <Button variant="gold" icon={Sparkles} onClick={() => setBulkPackageModal(true)}>
-                  New combo
-                </Button>
-              }
-            />
-          )
-        ) : list.length ? (
+        {list.length ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-stone-100 bg-stone-50/60">
@@ -451,7 +404,7 @@ export default function Halls() {
                   return (
                     <tr
                       key={b.id}
-                      onClick={() => setDetailId(b.id)}
+                      onClick={() => (b.package_id ? setSelectedPackageId(b.package_id) : setDetailId(b.id))}
                       className="group cursor-pointer transition-colors duration-150 hover:bg-gold-50/80"
                     >
                       <td className="td whitespace-nowrap">
@@ -461,6 +414,15 @@ export default function Halls() {
                       <td className="td">
                         <p className="font-medium text-ink-900 group-hover:text-gold-900 transition-colors">{b.customer_name}</p>
                         <p className="text-xs text-stone-500">{b.phone || '—'}</p>
+                        {b.package_id && (() => {
+                          const c = comboById[b.package_id];
+                          const parts = c ? [c.rooms_count > 0 && `${c.rooms_count} room${c.rooms_count > 1 ? 's' : ''}`, c.supplies_count > 0 && `${c.supplies_count} supplies`].filter(Boolean) : [];
+                          return (
+                            <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-gold-100 px-2 py-0.5 text-[11px] font-semibold text-gold-800">
+                              Hall + add-ons{parts.length ? ` · ${parts.join(' · ')}` : ''}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="td whitespace-nowrap">{b.hall_name}</td>
                       <td className="td whitespace-nowrap">
@@ -468,8 +430,9 @@ export default function Halls() {
                         {b.guests > 0 && <p className="text-xs text-stone-500">{b.guests} guests</p>}
                       </td>
                       <td className="td text-right whitespace-nowrap">
-                        <p className="font-medium">{inr(b.total)}</p>
-                        <p className={cn('text-xs', due > 0 ? 'text-rose-600' : 'text-emerald-600')}>{b.package_id ? 'Combo · ' : ''}{due > 0 ? `${inr(due)} due` : 'Paid'}</p>
+                        {/* With add-ons the amount is the whole combined bill */}
+                        <p className="font-medium">{inr(b.package_id ? b.combo_total : b.total)}</p>
+                        <p className={cn('text-xs', due > 0 ? 'text-rose-600' : 'text-emerald-600')}>{due > 0 ? `${inr(due)} due` : 'Paid'}</p>
                       </td>
                       <td className="td"><Badge tone={HALL_STATUS[b.status].tone} dot>{HALL_STATUS[b.status].label}</Badge></td>
                       <td className="td text-right whitespace-nowrap">
@@ -490,19 +453,6 @@ export default function Halls() {
         )}
       </Card>
 
-      {bulkPackageModal && (
-        <BulkPackageModal
-          onClose={() => setBulkPackageModal(false)}
-          onSaved={createdPackage => {
-            setBulkPackageModal(false);
-            refresh();
-            setFilter('packages');
-            if (createdPackage) {
-              setWaPackage(createdPackage);
-            }
-          }}
-        />
-      )}
 
       {selectedPackageId && (
         <PackageDetailModal
@@ -513,6 +463,7 @@ export default function Halls() {
         />
       )}
 
+      {powerOpen && <PowerUsageModal onClose={() => setPowerOpen(false)} />}
       {waPackage && (
         <WhatsAppModal
           kind="package"
@@ -524,7 +475,7 @@ export default function Halls() {
       {form && (
         <HallBookingForm booking={form.booking} halls={halls.data} defaultHallId={form.hallId} defaultDate={form.date}
           onClose={() => setForm(null)}
-          onSaved={saved => { setForm(null); refresh(); setDetailId(saved.id); }} />
+          onSaved={saved => { setForm(null); refresh(); if (saved?.package) setSelectedPackageId(saved.package.id); else setDetailId(saved.id); }} />
       )}
       {detailId && !form && (
         <BookingDetail kind="hall" id={detailId} onClose={() => setDetailId(null)} onChanged={refresh}
@@ -576,6 +527,8 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
         rate_full: hall.rate_full ?? 0,
         rate_half: hall.rate_half ?? 0,
         description: hall.description || '',
+        full_time: hall.full_time || '7:00 AM to 3:00 AM (next day)',
+        half_time: hall.half_time || '7:00 AM to 3:00 PM',
       };
     }
     const defaultName = isCombo && selectedHalls.length
@@ -590,6 +543,8 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
       rate_full: isCombo && combinedFullRate ? Math.round(combinedFullRate * 0.85) : 0,
       rate_half: isCombo && combinedHalfRate ? Math.round(combinedHalfRate * 0.85) : 0,
       description: defaultDesc,
+      full_time: '7:00 AM to 3:00 AM (next day)',
+      half_time: '7:00 AM to 3:00 PM',
     };
   });
 
@@ -862,7 +817,7 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
             label="Full day package rate (₹)"
             hint={isCombo && combinedFullRate > 0 && Number(f.rate_full) < combinedFullRate
               ? `Discounted: saves ${inr(combinedFullRate - Number(f.rate_full))}`
-              : slotTime('full', settings)}
+              : slotTime('full', settings, f)}
           >
             <Input
               type="number"
@@ -879,7 +834,7 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
             label="Half day package rate (₹)"
             hint={isCombo && combinedHalfRate > 0 && Number(f.rate_half) < combinedHalfRate
               ? `Discounted: saves ${inr(combinedHalfRate - Number(f.rate_half))}`
-              : slotTime('half', settings)}
+              : slotTime('half', settings, f)}
           >
             <Input
               type="number"
@@ -890,6 +845,13 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
                 set('rate_half', e.target.value);
               }}
             />
+          </Field>
+
+          <Field label="Full day timing">
+            <Input value={f.full_time} onChange={e => set('full_time', e.target.value)} placeholder="7:00 AM to 3:00 AM (next day)" />
+          </Field>
+          <Field label="Half day timing">
+            <Input value={f.half_time} onChange={e => set('half_time', e.target.value)} placeholder="7:00 AM to 3:00 PM" />
           </Field>
 
           <Field label="Description" className="sm:col-span-2">

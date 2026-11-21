@@ -4,6 +4,7 @@ import { found, inr, isDate } from '../lib/http.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { syncPaid } from './bookings.js';
 import { comboOfPayment, syncComboPaid } from '../lib/combo.js';
+import { syncBandPaid } from './band.js';
 
 const r = Router();
 export default r;
@@ -14,14 +15,15 @@ r.get('/', (req, res) => {
   const to = isDate(req.query.to) ? req.query.to : t;
   res.json(all(
     `SELECT p.*, u.name AS created_by_name,
-            COALESCE(rb.guest_name, hb.customer_name) AS party,
-            COALESCE(rm.name, h.name) AS unit
+            COALESCE(rb.guest_name, hb.customer_name, bb.customer_name) AS party,
+            COALESCE(rm.name, h.name, CASE WHEN bb.id IS NOT NULL THEN 'Band Melam' END) AS unit
      FROM payments p
      LEFT JOIN users u ON u.id = p.created_by
      LEFT JOIN room_bookings rb ON p.kind = 'room' AND rb.id = p.booking_id
      LEFT JOIN rooms rm ON rm.id = rb.room_id
      LEFT JOIN hall_bookings hb ON p.kind = 'hall' AND hb.id = p.booking_id
      LEFT JOIN halls h ON h.id = hb.hall_id
+     LEFT JOIN band_bookings bb ON p.kind = 'band' AND bb.id = p.booking_id
      WHERE p.paid_on BETWEEN ? AND ?
      ORDER BY p.paid_on DESC, p.id DESC`, from, to));
 });
@@ -31,7 +33,8 @@ r.delete('/:id', requireAdmin, (req, res) => {
   tx(() => {
     const combo = comboOfPayment(p);
     run('DELETE FROM payments WHERE id = ?', p.id);
-    syncPaid(p.kind, p.booking_id);
+    if (p.kind === 'band') syncBandPaid(p.booking_id);
+    else syncPaid(p.kind, p.booking_id);
     if (combo) syncComboPaid(combo);
   });
   log(req.user.id, 'payment deleted', `${inr(p.amount)} · ${p.kind} booking #${p.booking_id}`);

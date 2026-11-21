@@ -50,10 +50,14 @@ export function syncAllComboPaid() {
   for (const { id } of all('SELECT id FROM event_packages')) syncComboPaid(id);
 }
 
+/** Decoration on a combo's bill (SQL, for a combo row aliased `alias`); cancelled plans don't count. */
+export const decorTotalSql = alias =>
+  `COALESCE((SELECT SUM(dp.total) FROM decor_plans dp WHERE dp.package_id = ${alias}.id AND dp.status <> 'cancelled'), 0)`;
+
 /** Columns added to hall/room booking queries (alias b) so a combo's bookings show the combo's bill. */
 export const COMBO_COLUMNS = `,
   pk.bill_no AS combo_bill_no, pk.status AS combo_status, pk.advance_paid AS combo_paid,
-  pk.total_amount + COALESCE(ph.power_amount, 0) + COALESCE(ph.generator_amount, 0) AS combo_total`;
+  pk.total_amount + COALESCE(ph.power_amount, 0) + COALESCE(ph.generator_amount, 0) + ${decorTotalSql('pk')} AS combo_total`;
 export const COMBO_JOINS = `
   LEFT JOIN event_packages pk ON pk.id = b.package_id
   LEFT JOIN hall_bookings ph ON ph.id = pk.hall_booking_id`;

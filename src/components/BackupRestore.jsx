@@ -8,6 +8,7 @@ const LABELS = {
   users: 'Logins', rooms: 'Rooms', halls: 'Halls', supplies: 'Supplies', settings: 'Settings',
   event_packages: 'Combos', hall_bookings: 'Hall bookings', room_bookings: 'Room bookings',
   payments: 'Payments', stock_moves: 'Stock moves', supply_rentals: 'Supply rentals',
+  decor_items: 'Decoration items', decor_plans: 'Decoration plans',
 };
 
 /** Admin: download all data as one file, or replace all data with such a file. */

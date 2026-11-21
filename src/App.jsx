@@ -9,7 +9,6 @@ import Layout from './components/Layout.jsx';
 // Once signed in, the rest are fetched quietly in idle time so moving between pages is instant.
 const pages = {
   Dashboard: () => import('./pages/Dashboard.jsx'),
-  Combos: () => import('./pages/Combos.jsx'),
   Rooms: () => import('./pages/Rooms.jsx'),
   Halls: () => import('./pages/Halls.jsx'),
   Supplies: () => import('./pages/Supplies.jsx'),
@@ -21,7 +20,6 @@ const pages = {
 };
 const Login = lazy(() => import('./pages/Login.jsx'));
 const Dashboard = lazy(pages.Dashboard);
-const Combos = lazy(pages.Combos);
 const Rooms = lazy(pages.Rooms);
 const Halls = lazy(pages.Halls);
 const Supplies = lazy(pages.Supplies);
@@ -64,7 +62,6 @@ function Shell() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
-        <Route path="combos" element={<Combos />} />
         <Route path="rooms" element={<Rooms />} />
         <Route path="halls" element={<Halls />} />
         <Route path="supplies" element={<Supplies />} />

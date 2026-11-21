@@ -92,6 +92,7 @@ export default function DecorationsTab({ isAdmin, settings, reloadSettings, hall
                   </div>
                   <p className="mt-0.5 text-xs text-stone-500">
                     {fmtDate(p.event_date)}{p.event_name ? ` · ${p.event_name}` : ''}{p.hall_name ? ` · ${p.hall_name}` : ''} · Bill {p.bill_no || '—'}
+                    {p.combo_bill_no && <> · <b className="text-gold-800">on combined bill {p.combo_bill_no}</b></>}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {plansAreas(p.items).map(a => (
@@ -157,24 +158,21 @@ const newLine = (area, item) => ({
   rate: item ? n(item.price) : 0,
 });
 
-function PlanModal({ plan, areas, priceItems, hallBookings, onClose, onSaved }) {
-  const { toast } = useUI();
-  const editing = !!plan.id;
-  const [f, setF] = useState(() => ({
-    hall_booking_id: plan.hall_booking_id || '',
-    customer_name: plan.customer_name || '',
-    phone: plan.phone || '',
-    event_name: plan.event_name || '',
-    event_date: plan.event_date || today(),
-    discount: plan.discount || '',
-    notes: plan.notes || '',
-  }));
-  const [lines, setLines] = useState(() => (plan.items || []).map(l => ({ ...newLine(l.area), ...l })));
-  // Areas shown in the form: the ones the plan already uses, plus any ticked
-  const [open, setOpen] = useState(() => plansAreas(plan.items));
-  const [saving, setSaving] = useState(false);
-  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+export const decorLineAmount = l => Math.round(n(l.qty) * n(l.rate) * 100) / 100;
+export const decorSubtotal = lines => lines.reduce((s, l) => s + (l.name ? decorLineAmount(l) : 0), 0);
+export const toDecorLines = items => (items || []).map(l => ({ ...newLine(l.area), ...l }));
+/** The lines as sent to the server (empty rows dropped; the server prices them again). */
+export const decorItemsPayload = lines => lines.filter(l => l.name.trim())
+  .map(({ area, name, unit, qty, rate }) => ({ area, name: name.trim(), unit, qty: n(qty), rate: n(rate) }));
 
+/**
+ * Area chips (Stage, Entrance...) and, for each ticked area, its items with quantity and rate.
+ * Shared by the Decorations page and the hall booking form.
+ */
+export function DecorLinesEditor({ areas, priceItems, lines, setLines }) {
+  const { toast } = useUI();
+  // Areas shown: the ones the lines already use, plus any ticked
+  const [open, setOpen] = useState(() => plansAreas(lines));
   const allAreas = useMemo(() => [...new Set([...areas, ...plansAreas(lines)])], [areas, lines]);
   const byArea = area => priceItems.filter(i => i.area === area);
 
@@ -196,19 +194,106 @@ function PlanModal({ plan, areas, priceItems, hallBookings, onClose, onSaved }) 
     updateLine(l.key, item ? { name: item.name, unit: item.unit, rate: n(item.price) } : { name });
   };
 
+  return (
+    <div className="space-y-5">
+      <div>
+        <span className="label">Areas to decorate</span>
+        <div className="flex flex-wrap gap-2">
+          {allAreas.map(a => {
+            const on = open.includes(a);
+            return (
+              <button key={a} type="button" onClick={() => toggleArea(a)} aria-pressed={on}
+                className={cn('cursor-pointer rounded-full border px-3 py-1.5 text-xs font-medium transition',
+                  on ? 'border-ink-900 bg-ink-900 text-white' : 'border-stone-200 bg-white text-stone-600 hover:border-gold-300')}>
+                {on ? '✓ ' : '+ '}{a}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {open.length === 0 && (
+        <p className="rounded-xl border border-dashed border-stone-200 p-4 text-center text-sm text-stone-500">
+          Tap an area above to start adding items.
+        </p>
+      )}
+
+      {open.map(area => {
+        const rows = lines.filter(l => l.area === area);
+        const sub = rows.reduce((s, l) => s + (l.name ? decorLineAmount(l) : 0), 0);
+        const names = byArea(area).map(i => i.name);
+        return (
+          <div key={area} className="rounded-2xl border border-stone-200">
+            <div className="flex items-center justify-between gap-3 border-b border-stone-100 bg-stone-50/60 px-4 py-2.5">
+              <span className="font-semibold text-ink-900">{area}</span>
+              <span className="text-sm font-semibold text-ink-900">{inr(sub)}</span>
+            </div>
+            <div className="space-y-2 p-3">
+              {rows.map(l => (
+                <div key={l.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_5rem_7rem_6rem_auto]">
+                  <div className="min-w-0">
+                    <Combobox value={l.name} onChange={v => pickName(l, v)} options={names} placeholder="Item, e.g. Flower backdrop" />
+                  </div>
+                  <div className="col-span-2 row-start-2 grid grid-cols-3 gap-2 sm:contents">
+                    <label className="block">
+                      <span className="text-[11px] text-stone-400 sm:hidden">Qty</span>
+                      <Input type="number" min="0" step="any" value={l.qty} onChange={e => updateLine(l.key, { qty: e.target.value })} aria-label="Quantity" />
+                    </label>
+                    <label className="block">
+                      <span className="text-[11px] text-stone-400 sm:hidden">Rate (₹)</span>
+                      <Input type="number" min="0" step="any" value={l.rate} onChange={e => updateLine(l.key, { rate: e.target.value })} aria-label="Rate" />
+                    </label>
+                    <div className="flex h-10 items-center justify-end text-sm font-medium text-ink-900 tabular-nums">
+                      {inr(decorLineAmount(l))}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => setLines(ls => ls.filter(x => x.key !== l.key))}
+                    className="col-start-2 row-start-1 grid h-10 w-9 cursor-pointer place-items-center rounded-lg text-stone-400 hover:bg-rose-50 hover:text-rose-600 sm:col-start-5"
+                    aria-label="Remove item" title="Remove item">
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setLines(ls => [...ls, newLine(area)])}
+                className="cursor-pointer text-xs font-medium text-gold-700 hover:text-gold-900 hover:underline">
+                + Add item to {area}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PlanModal({ plan, areas, priceItems, hallBookings, onClose, onSaved }) {
+  const { toast } = useUI();
+  const editing = !!plan.id;
+  const [f, setF] = useState(() => ({
+    hall_booking_id: plan.hall_booking_id || '',
+    customer_name: plan.customer_name || '',
+    phone: plan.phone || '',
+    event_name: plan.event_name || '',
+    event_date: plan.event_date || today(),
+    discount: plan.discount || '',
+    notes: plan.notes || '',
+  }));
+  const [lines, setLines] = useState(() => toDecorLines(plan.items));
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
   const linkBooking = id => {
     set('hall_booking_id', id);
     const b = hallBookings.find(x => String(x.id) === String(id));
     if (b) setF(p => ({ ...p, hall_booking_id: id, customer_name: b.customer_name, phone: b.phone || '', event_name: b.event_type || p.event_name, event_date: b.event_date }));
   };
 
-  const amount = l => Math.round(n(l.qty) * n(l.rate) * 100) / 100;
-  const subtotal = lines.reduce((s, l) => s + (l.name ? amount(l) : 0), 0);
+  const subtotal = decorSubtotal(lines);
   const discount = Math.min(subtotal, n(f.discount));
   const total = subtotal - discount;
 
   const save = async () => {
-    const items = lines.filter(l => l.name.trim()).map(({ area, name, unit, qty, rate }) => ({ area, name: name.trim(), unit, qty: n(qty), rate: n(rate) }));
+    const items = decorItemsPayload(lines);
     if (!items.length) return toast('Add at least one decoration item', 'error');
     setSaving(true);
     try {
@@ -261,72 +346,7 @@ function PlanModal({ plan, areas, priceItems, hallBookings, onClose, onSaved }) 
           </Field>
         </div>
 
-        <div>
-          <span className="label">Areas to decorate</span>
-          <div className="flex flex-wrap gap-2">
-            {allAreas.map(a => {
-              const on = open.includes(a);
-              return (
-                <button key={a} type="button" onClick={() => toggleArea(a)} aria-pressed={on}
-                  className={cn('cursor-pointer rounded-full border px-3 py-1.5 text-xs font-medium transition',
-                    on ? 'border-ink-900 bg-ink-900 text-white' : 'border-stone-200 bg-white text-stone-600 hover:border-gold-300')}>
-                  {on ? '✓ ' : '+ '}{a}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {open.length === 0 && (
-          <p className="rounded-xl border border-dashed border-stone-200 p-4 text-center text-sm text-stone-500">
-            Tap an area above to start adding items.
-          </p>
-        )}
-
-        {open.map(area => {
-          const rows = lines.filter(l => l.area === area);
-          const sub = rows.reduce((s, l) => s + (l.name ? amount(l) : 0), 0);
-          const names = byArea(area).map(i => i.name);
-          return (
-            <div key={area} className="rounded-2xl border border-stone-200">
-              <div className="flex items-center justify-between gap-3 border-b border-stone-100 bg-stone-50/60 px-4 py-2.5">
-                <span className="font-semibold text-ink-900">{area}</span>
-                <span className="text-sm font-semibold text-ink-900">{inr(sub)}</span>
-              </div>
-              <div className="space-y-2 p-3">
-                {rows.map(l => (
-                  <div key={l.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_5rem_7rem_6rem_auto]">
-                    <div className="min-w-0">
-                      <Combobox value={l.name} onChange={v => pickName(l, v)} options={names} placeholder="Item, e.g. Flower backdrop" />
-                    </div>
-                    <div className="col-span-2 row-start-2 grid grid-cols-3 gap-2 sm:contents">
-                      <label className="block">
-                        <span className="text-[11px] text-stone-400 sm:hidden">Qty</span>
-                        <Input type="number" min="0" step="any" value={l.qty} onChange={e => updateLine(l.key, { qty: e.target.value })} aria-label="Quantity" />
-                      </label>
-                      <label className="block">
-                        <span className="text-[11px] text-stone-400 sm:hidden">Rate (₹)</span>
-                        <Input type="number" min="0" step="any" value={l.rate} onChange={e => updateLine(l.key, { rate: e.target.value })} aria-label="Rate" />
-                      </label>
-                      <div className="flex h-10 items-center justify-end text-sm font-medium text-ink-900 tabular-nums">
-                        {inr(amount(l))}
-                      </div>
-                    </div>
-                    <button type="button" onClick={() => setLines(ls => ls.filter(x => x.key !== l.key))}
-                      className="col-start-2 row-start-1 grid h-10 w-9 cursor-pointer place-items-center rounded-lg text-stone-400 hover:bg-rose-50 hover:text-rose-600 sm:col-start-5"
-                      aria-label="Remove item" title="Remove item">
-                      <X size={16} />
-                    </button>
-                  </div>
-                ))}
-                <button type="button" onClick={() => setLines(ls => [...ls, newLine(area)])}
-                  className="cursor-pointer text-xs font-medium text-gold-700 hover:text-gold-900 hover:underline">
-                  + Add item to {area}
-                </button>
-              </div>
-            </div>
-          );
-        })}
+        <DecorLinesEditor areas={areas} priceItems={priceItems} lines={lines} setLines={setLines} />
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Discount (₹)" hint={`Items total ${inr(subtotal)}`}>

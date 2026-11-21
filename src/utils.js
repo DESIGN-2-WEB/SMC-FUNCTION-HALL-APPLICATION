@@ -2,6 +2,8 @@ export const inr = n =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n || 0);
 
 export const today = () => new Date().toLocaleDateString('en-CA');
+/** The time now as "HH:MM" (24-hour), for time fields. */
+export const nowTime = () => new Date().toTimeString().slice(0, 5);
 
 export const addDays = (d, n) => {
   const x = new Date(`${d}T00:00:00`);
@@ -88,13 +90,17 @@ export const ROOM_STATE = {
 export const SLOTS = { full: 'Full day', half: 'Half day' };
 const OLD_SLOTS = { morning: 'Morning', evening: 'Evening' };
 export const slotName = s => SLOTS[s] || OLD_SLOTS[s] || 'Full day';
-/** Hall hours for a slot, from Settings (e.g. "7:00 AM to 3:00 PM"); empty for old slots. */
-export const slotTime = (s, settings) =>
-  s === 'half' ? settings?.hall_half_time || '7:00 AM to 3:00 PM'
-    : !s || s === 'full' ? settings?.hall_full_time || '7:00 AM to 3:00 AM (next day)'
+/**
+ * Hall hours for a slot (e.g. "7:00 AM to 3:00 PM"); empty for old slots. Each hall has its own
+ * timings: pass the hall (full_time / half_time) or a hall booking (hall_full / hall_half).
+ * The old Settings values are only a fallback.
+ */
+export const slotTime = (s, settings, hall) =>
+  s === 'half' ? hall?.hall_half || hall?.half_time || settings?.hall_half_time || '7:00 AM to 3:00 PM'
+    : !s || s === 'full' ? hall?.hall_full || hall?.full_time || settings?.hall_full_time || '7:00 AM to 3:00 AM (next day)'
       : '';
-export const slotWithTime = (s, settings) => {
-  const t = slotTime(s, settings);
+export const slotWithTime = (s, settings, hall) => {
+  const t = slotTime(s, settings, hall);
   return t ? `${slotName(s)} (${t})` : slotName(s);
 };
 /** "12:00 PM" -> minutes after midnight (null if it can't be read). */
@@ -106,19 +112,22 @@ const toMinutes = t => {
   if (m[3] && /p/i.test(m[3])) h += 12;
   return h * 60 + Number(m[2] || 0);
 };
-/** True when a guest left after the check-out date and time in Settings. */
+/** True when a guest left after the room's check-out date and time. */
 export const lateCheckout = (b, settings) => {
   if (!b?.checked_out_at || !b.check_out) return false;
   const [day, time = '00:00'] = String(b.checked_out_at).split(' ');
   if (day !== b.check_out) return day > b.check_out;
-  const limit = toMinutes(roomTimes(settings).checkOut);
+  const limit = toMinutes(roomTimes(settings, b).checkOut);
   const [h, mm] = time.split(':').map(Number);
   return limit != null && h * 60 + mm > limit;
 };
-/** Room check-in / check-out times from Settings. */
-export const roomTimes = settings => ({
-  checkIn: settings?.room_checkin_time || '11:00 AM',
-  checkOut: settings?.room_checkout_time || '12:00 PM',
+/**
+ * A room's check-in / check-out times. Pass the room (checkin_time / checkout_time) or a room
+ * booking (room_checkin / room_checkout); the old Settings values are only a fallback.
+ */
+export const roomTimes = (settings, room) => ({
+  checkIn: room?.room_checkin || room?.checkin_time || settings?.room_checkin_time || '11:00 AM',
+  checkOut: room?.room_checkout || room?.checkout_time || settings?.room_checkout_time || '12:00 PM',
 });
 export const METHODS = ['Cash', 'UPI', 'Card', 'Bank transfer', 'Cheque'];
 export const EVENT_TYPES = [

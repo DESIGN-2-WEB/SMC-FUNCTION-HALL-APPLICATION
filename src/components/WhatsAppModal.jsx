@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Check, Copy, Smartphone } from 'lucide-react';
 import { useSettings } from '../settings.jsx';
 import { Button, Field, Input, Modal, Segmented, useUI } from './ui.jsx';
-import { buildBulkRentalMessage, buildDecorMessage, buildHallMessage, buildPackageMessage, buildRoomMessage, buildSupplyMessage, cleanPhone, openWhatsApp } from '../utils/whatsapp.js';
+import { buildBandMessage, buildBandTeamMessage, buildBulkRentalMessage, buildDecorMessage, buildHallMessage, buildPackageMessage, buildRoomMessage, buildSupplyMessage, cleanPhone, openWhatsApp } from '../utils/whatsapp.js';
 
 export function WhatsAppIcon({ size = 16, className = '' }) {
   return (
@@ -12,7 +12,7 @@ export function WhatsAppIcon({ size = 16, className = '' }) {
   );
 }
 
-export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, onClose }) {
+export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, initialTemplate, onClose }) {
   const { settings } = useSettings();
   const { toast } = useUI();
   const isRoom = kind === 'room';
@@ -21,6 +21,7 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, o
   const isPackage = kind === 'package';
   const isBulkRental = kind === 'bulk_rental';
   const isDecor = kind === 'decor';
+  const isBand = kind === 'band';
 
   // Templates options based on booking kind
   // Greeting (booking confirmed / welcome), Payment (received, due or fully paid), Thank you
@@ -45,18 +46,26 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, o
     ? [{ value: 'rental', label: 'Dispatch slip' }]
     : isDecor
     ? [{ value: 'decor', label: 'Decoration quote' }]
+    : isBand
+    ? [{ value: 'band', label: 'To customer' }, { value: 'band_team', label: 'Timing to band team' }]
     : [{ value: 'supply', label: 'Supply receipt' }];
 
   // Open on the message that fits where the booking is: thanks once it is over
   const [template, setTemplate] = useState(() =>
-    isRoom && booking?.status === 'checked_out' ? 'check_out'
+    initialTemplate ? initialTemplate
+      : isRoom && booking?.status === 'checked_out' ? 'check_out'
       : isHall && booking?.status === 'completed' ? 'completed'
         : 'booking');
-  const [phone, setPhone] = useState(() => (isSupply ? '' : booking?.phone || ''));
+  // The band team's message goes to the band's own phone, the rest to the customer
+  const phoneFor = t => (isSupply ? '' : isBand && t === 'band_team' ? booking?.team_phone || '' : booking?.phone || '');
+  const [phone, setPhone] = useState(() => phoneFor(template));
+  const changeTemplate = t => { setTemplate(t); if (isBand) setPhone(phoneFor(t)); };
   const [copied, setCopied] = useState(false);
 
   // Generate message based on selected template
-  const text = isDecor
+  const text = isBand
+    ? (template === 'band_team' ? buildBandTeamMessage(booking, settings) : buildBandMessage(booking, settings))
+    : isDecor
     ? buildDecorMessage(booking, settings)
     : isBulkRental
     ? buildBulkRentalMessage(booking, settings)
@@ -94,7 +103,7 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, o
     <Modal
       size="md"
       title="Share Receipt on WhatsApp"
-      subtitle={`Send formatted receipt & confirmation to ${isRoom ? booking?.guest_name : isHall || isDecor ? booking?.customer_name : 'Customer'}`}
+      subtitle={`Send formatted receipt & confirmation to ${isRoom ? booking?.guest_name : isHall || isDecor || isBand ? booking?.customer_name : 'Customer'}`}
       onClose={onClose}
       footer={
         <div className="flex w-full flex-wrap items-center justify-between gap-2.5">
@@ -140,7 +149,7 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, o
             <Field label="Message Type">
               <Segmented
                 value={template}
-                onChange={setTemplate}
+                onChange={changeTemplate}
                 options={templates}
                 className="w-full text-xs"
               />

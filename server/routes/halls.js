@@ -18,6 +18,7 @@ const parse = b => {
     name: str(b.name), capacity: Math.max(1, num(b.capacity, 100)), rate_full: num(b.rate_full),
     rate_half: num(b.rate_half), description: str(b.description),
     is_combo, included_hall_ids,
+    full_time: str(b.full_time).slice(0, 60) || '7:00 AM to 3:00 AM (next day)', half_time: str(b.half_time).slice(0, 60) || '7:00 AM to 3:00 PM',
   };
   if (!d.name) fail('Hall name is required');
   if (is_combo) {
@@ -56,8 +57,8 @@ r.get('/', (req, res) => {
 
 r.post('/', requireAdmin, (req, res) => {
   const d = parse(req.body);
-  const { id } = run('INSERT INTO halls (name, capacity, rate_full, rate_half, description, is_combo, included_hall_ids) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    d.name, d.capacity, d.rate_full, d.rate_half, d.description, d.is_combo, d.included_hall_ids);
+  const { id } = run('INSERT INTO halls (name, capacity, rate_full, rate_half, description, is_combo, included_hall_ids, full_time, half_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    d.name, d.capacity, d.rate_full, d.rate_half, d.description, d.is_combo, d.included_hall_ids, d.full_time, d.half_time);
   log(req.user.id, d.is_combo ? 'combo package added' : 'hall added', d.name);
   res.status(201).json({ id });
 });
@@ -65,8 +66,8 @@ r.post('/', requireAdmin, (req, res) => {
 r.put('/:id', requireAdmin, (req, res) => {
   const hall = load(req.params.id);
   const d = parse(req.body);
-  run('UPDATE halls SET name = ?, capacity = ?, rate_full = ?, rate_half = ?, description = ?, is_combo = ?, included_hall_ids = ? WHERE id = ?',
-    d.name, d.capacity, d.rate_full, d.rate_half, d.description, d.is_combo, d.included_hall_ids, hall.id);
+  run('UPDATE halls SET name = ?, capacity = ?, rate_full = ?, rate_half = ?, description = ?, is_combo = ?, included_hall_ids = ?, full_time = ?, half_time = ? WHERE id = ?',
+    d.name, d.capacity, d.rate_full, d.rate_half, d.description, d.is_combo, d.included_hall_ids, d.full_time, d.half_time, hall.id);
   log(req.user.id, d.is_combo ? 'combo package updated' : 'hall updated', `${d.name} · full ${inr(d.rate_full)} · half ${inr(d.rate_half)}`);
   res.json({ ok: true });
 });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BedDouble, Boxes, CreditCard, Landmark, Printer, Zap } from 'lucide-react';
+import { BedDouble, Boxes, CreditCard, Flower2, Landmark, Pencil, Printer, Trash2, Zap } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import { Badge, Button, Card, Field, Form, Input, Modal, cn, useUI } from './ui.jsx';
@@ -10,12 +10,13 @@ import { ExtraChargesForm } from './ExtraChargesForm.jsx';
 import { Select } from './pickers.jsx';
 import { WhatsAppIcon } from './WhatsAppModal.jsx';
 
-export default function PackageDetailModal({ packageId, onClose, onRefresh, onShareWa }) {
-  const { toast } = useUI();
+export default function PackageDetailModal({ packageId, onClose, onRefresh, onShareWa, onDeleted }) {
+  const { toast, confirm } = useUI();
   const { settings } = useSettings();
   const { isAdmin } = useAuth();
   const { data: pkg, reload } = useApi(`/packages/${packageId}`);
   const [chargesOpen, setChargesOpen] = useState(false);
+  const [roomEdit, setRoomEdit] = useState(null); // { id, rate } while the admin changes a room's price
 
   // Payment State
   const [payModal, setPayModal] = useState(false);
@@ -24,6 +25,7 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
   const [payNote, setPayNote] = useState('');
   const [paying, setPaying] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   if (!pkg) return null;
 
@@ -61,6 +63,47 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
     }
   };
 
+  // Admin only: remove the combo for good (the server refuses anyone else)
+  const handleDeletePackage = async () => {
+    const paid = Number(pkg.advance_paid) || 0;
+    const ok = await confirm({
+      title: pkg.bill_no ? `Delete combo ${pkg.bill_no}?` : 'Delete this combo?',
+      message: [
+        `This permanently removes ${pkg.customer_name}'s combo: the hall booking, ${pkg.rooms?.length || 0} room booking(s) and ${pkg.supplies?.length || 0} supply item(s).`,
+        paid > 0 && `${inr(paid)} of payments received will also be deleted from the records.`,
+        'Supplies still out go back to stock. This cannot be undone. To keep it on record, use Cancel Combo instead.',
+      ].filter(Boolean).join(' '),
+      danger: true,
+      confirmText: 'Delete combo',
+    });
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await api(`/packages/${pkg.id}`, { method: 'DELETE' });
+      toast('Combo deleted');
+      if (onDeleted) onDeleted();
+      else { onRefresh?.(); onClose(); }
+    } catch (err) {
+      toast(err.message, 'error');
+      setDeleting(false);
+    }
+  };
+
+  // Admin: change one room's rate per night; the combo bill follows
+  const saveRoomRate = async () => {
+    const rate = Number(roomEdit.rate);
+    if (!(rate >= 0) || roomEdit.rate === '') return toast('Enter a valid rate per night', 'error');
+    try {
+      await api(`/packages/${pkg.id}/rooms/${roomEdit.id}`, { method: 'PATCH', body: { rate } });
+      toast('Room price updated');
+      setRoomEdit(null);
+      reload();
+      onRefresh?.();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
+
   const handleCancelPackage = async () => {
     if (!window.confirm(`Are you sure you want to cancel the entire combo for ${pkg.customer_name}? This will release the hall, cancel room reservations, and restore all rented equipment back to inventory.`)) {
       return;
@@ -87,7 +130,7 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
         onClose={onClose}
         footer={
           <div className="flex w-full flex-wrap items-center justify-between gap-2">
-            <div>
+            <div className="flex flex-wrap items-center gap-1">
               {!isCancelled && (
                 <Button
                   variant="danger-soft"
@@ -96,6 +139,11 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
                   onClick={handleCancelPackage}
                 >
                   Cancel Combo
+                </Button>
+              )}
+              {isAdmin && (
+                <Button variant="danger-soft" size="sm" icon={Trash2} loading={deleting} onClick={handleDeletePackage}>
+                  Delete combo
                 </Button>
               )}
             </div>
@@ -243,16 +291,38 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
               </div>
               <div className="divide-y divide-stone-100">
                 {pkg.rooms.map(r => (
-                  <div key={r.id} className="flex items-center justify-between py-2 text-xs">
-                    <div>
-                      <p className="font-semibold text-ink-900">
-                        {r.room_number ? `Room ${r.room_number} — ${r.room_name}` : r.room_name}
-                      </p>
-                      <p className="text-stone-400 text-[11px]">
-                        {fmtDate(r.check_in)} → {fmtDate(r.check_out)} · {roomNights(r)} night{roomNights(r) > 1 ? 's' : ''} × {inr(r.rate)} · {r.guests} guests
-                      </p>
+                  <div key={r.id} className="py-2 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-ink-900">
+                          {r.room_number ? `Room ${r.room_number} — ${r.room_name}` : r.room_name}
+                        </p>
+                        <p className="text-stone-400 text-[11px]">
+                          {fmtDate(r.check_in)} → {fmtDate(r.check_out)} · {roomNights(r)} night{roomNights(r) > 1 ? 's' : ''} × {inr(r.rate)} · {r.guests} guests
+                        </p>
+                      </div>
+                      <span className="flex shrink-0 items-center gap-1">
+                        <span className="font-bold text-ink-900">{inr(r.total || r.rate)}</span>
+                        {isAdmin && !isCancelled && r.status !== 'cancelled' && roomEdit?.id !== r.id && (
+                          <button type="button" onClick={() => setRoomEdit({ id: r.id, rate: r.rate })}
+                            className="cursor-pointer rounded-lg p-1 text-stone-400 hover:bg-stone-100 hover:text-ink-900"
+                            aria-label={`Change price of ${r.room_name}`} title="Change price">
+                            <Pencil size={13} />
+                          </button>
+                        )}
+                      </span>
                     </div>
-                    <span className="font-bold text-ink-900">{inr(r.total || r.rate)}</span>
+                    {roomEdit?.id === r.id && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-gold-50 p-2">
+                        <span className="text-stone-600">Rate per night (₹)</span>
+                        <Input type="number" min="0" className="h-8 w-28 py-1 text-sm" autoFocus value={roomEdit.rate}
+                          onChange={e => setRoomEdit(x => ({ ...x, rate: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveRoomRate(); } }} />
+                        <span className="text-stone-500">= {inr((Number(roomEdit.rate) || 0) * roomNights(r))}</span>
+                        <Button size="sm" variant="gold" onClick={saveRoomRate}>Save</Button>
+                        <Button size="sm" variant="outline" onClick={() => setRoomEdit(null)}>Cancel</Button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -281,11 +351,44 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
                       </p>
                     </div>
                     <span className="font-bold text-ink-900 whitespace-nowrap">
-                      {inr(s.total_rent)}
+                      {inr((Number(s.total_rent) || 0) + (Number(s.discount) || 0))}
                     </span>
                   </div>
                 ))}
               </div>
+              {pkg.supplies.some(s => Number(s.discount) > 0) && (
+                <div className="flex items-center justify-between border-t border-stone-100 pt-1.5 text-xs text-stone-600">
+                  <span>Supplies discount (full set price)</span>
+                  <span className="font-semibold">− {inr(pkg.supplies.reduce((t, s) => t + (Number(s.discount) || 0), 0))}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Section: Decoration (edited on the Decorations page; the bill follows) */}
+          {pkg.decor?.length > 0 && (
+            <div className="rounded-xl border border-stone-200 bg-white p-4 space-y-2.5">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-stone-600">
+                  <Flower2 size={15} className="text-gold-700" />
+                  <span>Decoration</span>
+                </div>
+                <span className="font-bold text-xs text-ink-900">{inr(pkg.decor_amount)}</span>
+              </div>
+              {pkg.decor.map(plan => (
+                <div key={plan.id} className="space-y-1">
+                  {[...new Set(plan.items.map(i => i.area))].map(area => (
+                    <div key={area} className="flex items-center justify-between text-xs">
+                      <span className="text-stone-600">{area}: {plan.items.filter(i => i.area === area).map(i => i.name).join(', ')}</span>
+                      <span className="font-semibold text-ink-900 whitespace-nowrap">{inr(plan.items.filter(i => i.area === area).reduce((s, i) => s + (Number(i.amount) || 0), 0))}</span>
+                    </div>
+                  ))}
+                  {Number(plan.discount) > 0 && (
+                    <div className="flex items-center justify-between text-xs text-stone-500"><span>Discount</span><span>− {inr(plan.discount)}</span></div>
+                  )}
+                </div>
+              ))}
+              <p className="text-[11px] text-stone-400">To change items, edit this plan on the Decorations page. The combined bill updates by itself.</p>
             </div>
           )}
 
@@ -410,7 +513,13 @@ export function printComboBill(pkg, settings) {
     lines.push([`Room ${r.room_number || ''}`.trim(), `${r.room_name} · ${fmtDate(r.check_in)} → ${fmtDate(r.check_out)}`, `${n} night${n > 1 ? 's' : ''}`, `${inr(r.rate)}/night`, Number(r.total || r.rate) || 0]);
   }
   for (const s of pkg.supplies || []) {
-    lines.push([s.supply_name, s.supply_category || 'Supplies', `${s.quantity} ${s.supply_unit || 'pcs'}`, inr(s.rent_rate), Number(s.total_rent) || 0]);
+    lines.push([s.supply_name, s.supply_category || 'Supplies', `${s.quantity} ${s.supply_unit || 'pcs'}`, inr(s.rent_rate), (Number(s.total_rent) || 0) + (Number(s.discount) || 0)]);
+  }
+  const suppliesDiscount = (pkg.supplies || []).reduce((t, s) => t + (Number(s.discount) || 0), 0);
+  if (suppliesDiscount > 0) lines.push(['Supplies discount', 'Full set price', '', '', -suppliesDiscount]);
+  for (const plan of pkg.decor || []) {
+    for (const i of plan.items || []) lines.push([i.name, `Decoration · ${i.area}`, `${i.qty} ${i.unit || 'pcs'}`, inr(i.rate), Number(i.amount) || 0]);
+    if (Number(plan.discount) > 0) lines.push(['Decoration discount', '', '', '', -Number(plan.discount)]);
   }
 
   const total = Number(pkg.grand_total ?? pkg.total_amount) || 0;

@@ -154,7 +154,7 @@ export default function OccupancyCalendar() {
             ))}
             <span className="flex items-center gap-1.5"><HallChip look={{ cls: 'bg-stone-400 text-white', short: 'Hall' }} slot="half" /> half day</span>
             <span className="flex items-center gap-1.5">
-              <span className="inline-flex items-center gap-0.5 rounded-md bg-white px-1 py-px text-[10px] font-bold text-ink-800 ring-1 ring-stone-300"><BedDouble size={11} />2</span>
+              <span className="inline-flex items-center gap-0.5 rounded-md bg-white px-1 py-px text-[10px] font-bold text-ink-800 ring-1 ring-stone-300"><BedDouble size={11} /></span>
               rooms occupied
             </span>
           </div>

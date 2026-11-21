@@ -15,10 +15,27 @@ import { COMBO_COLUMNS, COMBO_JOINS, syncComboPaid } from '../lib/combo.js';
 // Full day (7 AM to 3 AM) or half day (7 AM to 3 PM); morning/evening are kept for older bookings
 const SLOT_NAMES = { full: 'full day', half: 'half day', morning: 'morning', evening: 'evening' };
 
+/**
+ * The actual time a guest arrived or left, as typed at the desk ("YYYY-MM-DD HH:MM", or a date
+ * and "HH:MM"). Saved as "YYYY-MM-DD HH:MM:00"; anything unreadable means "now".
+ */
+const nowStamp = () => {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${today()} ${p(d.getHours())}:${p(d.getMinutes())}:00`;
+};
+const stamp = (at, date, time) => {
+  const v = str(at) || (isDate(str(date)) && /^\d{1,2}:\d{2}$/.test(str(time)) ? `${str(date)} ${str(time)}` : '');
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}):(\d{2})/.exec(v);
+  if (!m || !isDate(m[1]) || Number(m[2]) > 23 || Number(m[3]) > 59) return nowStamp();
+  return `${m[1]} ${m[2].padStart(2, '0')}:${m[3]}:00`;
+};
+
 const KINDS = {
   room: {
     table: 'room_bookings',
-    select: `SELECT b.*, r.number AS room_number, r.name AS room_name, u.name AS created_by_name${COMBO_COLUMNS}
+    select: `SELECT b.*, r.number AS room_number, r.name AS room_name, r.checkin_time AS room_checkin, r.checkout_time AS room_checkout,
+             u.name AS created_by_name${COMBO_COLUMNS}
              FROM room_bookings b JOIN rooms r ON r.id = b.room_id LEFT JOIN users u ON u.id = b.created_by${COMBO_JOINS}`,
     search: 'b.guest_name LIKE ? OR b.phone LIKE ?',
     range: 'b.check_in <= ? AND b.check_out >= ?',
@@ -57,7 +74,7 @@ const KINDS = {
   },
   hall: {
     table: 'hall_bookings',
-    select: `SELECT b.*, h.name AS hall_name, u.name AS created_by_name${COMBO_COLUMNS}
+    select: `SELECT b.*, h.name AS hall_name, h.full_time AS hall_full, h.half_time AS hall_half, u.name AS created_by_name${COMBO_COLUMNS}
              FROM hall_bookings b JOIN halls h ON h.id = b.hall_id LEFT JOIN users u ON u.id = b.created_by${COMBO_JOINS}`,
     search: 'b.customer_name LIKE ? OR b.phone LIKE ?',
     range: 'b.event_date BETWEEN ? AND ?',
@@ -69,9 +86,9 @@ const KINDS = {
       'hall_id', 'customer_name', 'phone', 'event_type', 'event_date', 'slot', 'guests',
       'rent', 'power_start', 'power_end', 'power_units', 'power_rate', 'power_amount',
       'generator_type', 'generator_hours', 'generator_rate', 'generator_amount',
-      'total', 'notes'
+      'total', 'notes', 'referral_name', 'referral_phone',
     ],
-    initialStatus: b => (b.status === 'tentative' ? 'tentative' : 'confirmed'),
+    initialStatus: () => 'confirmed', // no tentative holds: every new hall booking is confirmed
     parse(b) {
       const rent = num(b.rent);
       const power_start = num(b.power_start);
@@ -126,6 +143,8 @@ const KINDS = {
         rent, power_start, power_end, power_units, power_rate, power_amount,
         generator_type, generator_hours, generator_rate, generator_amount,
         total: Math.max(0, total), notes: str(b.notes),
+        // Optional: who referred this customer
+        referral_name: str(b.referral_name).slice(0, 100), referral_phone: str(b.referral_phone).slice(0, 30),
       };
       if (!get('SELECT id FROM halls WHERE id = ?', d.hall_id)) fail('Please choose a hall');
       if (!d.customer_name) fail('Customer name is required');
@@ -209,6 +228,19 @@ function bookingRouter(kind) {
     res.json(all(`${K.select} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${K.order}`, ...args));
   });
 
+  // Electricity and generator use of every event in a year, for the power usage analysis.
+  // (Defined before '/:id' so "power-usage" is not read as a booking id.)
+  if (kind === 'hall') r.get('/power-usage', (req, res) => {
+    const year = /^\d{4}$/.test(str(req.query.year)) ? str(req.query.year) : today().slice(0, 4);
+    res.json(all(
+      `SELECT b.id, b.bill_no, b.event_date, b.slot, b.customer_name, b.event_type, b.status, h.name AS hall_name,
+              b.power_start, b.power_end, b.power_units, b.power_rate, b.power_amount,
+              b.generator_type, b.generator_hours, b.generator_amount
+       FROM hall_bookings b JOIN halls h ON h.id = b.hall_id
+       WHERE substr(b.event_date, 1, 4) = ? AND b.status <> 'cancelled'
+       ORDER BY b.event_date, b.id`, year));
+  });
+
   r.get('/:id', (req, res) => {
     const b = load(req.params.id);
     const payments = all(`SELECT p.*, u.name AS created_by_name FROM payments p LEFT JOIN users u ON u.id = p.created_by
@@ -242,6 +274,9 @@ function bookingRouter(kind) {
         const { id } = run(`INSERT INTO ${K.table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
           ...K.fields.map(f => x[f]), K.initialStatus(req.body), req.user.id);
         setBillNo(K.table, id);
+        // Checked in straight away: note when the guest arrived (typed in the form, or now)
+        if (kind === 'room' && K.initialStatus(req.body) === 'checked_in')
+          run('UPDATE room_bookings SET checked_in_at = ? WHERE id = ?', stamp(null, x.check_in, req.body.checkin_time), id);
         // The money received now pays the rooms in order; anything extra stays on the last one
         const pay = i === list.length - 1 ? left : Math.min(left, x.total);
         if (pay > 0) {
@@ -278,14 +313,23 @@ function bookingRouter(kind) {
     // event and enter its final bill again, which only the admin may change
     const finished = !K.active.includes(b.status);
     if (finished && status !== b.status && req.user.role !== 'admin') fail('Only the admin can reopen a finished booking', 403);
+    // An event can only be completed on its scheduled day or later, by anyone
+    if (kind === 'hall' && status === 'completed' && b.status !== 'completed' && b.event_date > today())
+      fail(`This event is on ${b.event_date.split('-').reverse().join('-')}. It can be marked completed from that day.`);
     if (K.active.includes(status) && !K.active.includes(b.status)) {
       const clash = K.conflict(b, b.id);
       if (clash) fail(clash, 409);
     }
+    // Note when the guest actually arrived / left (entered at the desk, or now). Shown on the
+    // booking, receipt and WhatsApp message; late check-out is worked out from it.
+    const at = kind === 'room' ? stamp(req.body.at) : '';
+    if (kind === 'room' && status === 'checked_out' && b.status !== 'checked_out' && b.checked_in_at && at < b.checked_in_at)
+      fail('Check-out time cannot be before the check-in time');
     run(`UPDATE ${K.table} SET status = ? WHERE id = ?`, status, b.id);
-    // Note the time the guest actually left (shown on the booking, receipt and WhatsApp message)
+    if (kind === 'room' && status === 'checked_in' && b.status !== 'checked_in')
+      run('UPDATE room_bookings SET checked_in_at = ? WHERE id = ?', at, b.id);
     if (kind === 'room' && status === 'checked_out' && b.status !== 'checked_out')
-      run("UPDATE room_bookings SET checked_out_at = datetime('now', 'localtime') WHERE id = ?", b.id);
+      run('UPDATE room_bookings SET checked_out_at = ? WHERE id = ?', at, b.id);
     log(req.user.id, `${kind} booking ${status.replace('_', ' ')}`, K.label(b));
     res.json(load(b.id));
   });

@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { all, get, log, run, today, tx } from '../db.js';
-import { fail, found, isDate, num, str } from '../lib/http.js';
+import { fail, found, inr, isDate, num, str } from '../lib/http.js';
+import { requireAdmin } from '../middleware/auth.js';
 import { setBillNo } from '../lib/billno.js';
-import { comboPaymentsWhere, syncComboPaid } from '../lib/combo.js';
+import { comboPaymentsWhere, decorTotalSql, syncComboPaid } from '../lib/combo.js';
+import { parseDecorLines } from './decorations.js';
+import { spreadDiscount } from '../lib/discount.js';
 import { syncPaid } from './bookings.js';
 
 const r = Router();
@@ -21,7 +24,7 @@ const loadPackage = id => {
   let hall = null;
   if (pkg.hall_booking_id) {
     hall = get(`
-      SELECT b.*, h.name AS hall_name, h.is_combo
+      SELECT b.*, h.name AS hall_name, h.is_combo, h.full_time AS hall_full, h.half_time AS hall_half
       FROM hall_bookings b
       JOIN halls h ON h.id = b.hall_id
       WHERE b.id = ?
@@ -30,7 +33,8 @@ const loadPackage = id => {
 
   // Room details
   const rooms = all(`
-    SELECT b.*, r.number AS room_number, r.name AS room_name, r.type AS room_type
+    SELECT b.*, r.number AS room_number, r.name AS room_name, r.type AS room_type,
+      r.checkin_time AS room_checkin, r.checkout_time AS room_checkout
     FROM room_bookings b
     JOIN rooms r ON r.id = b.room_id
     WHERE b.package_id = ?
@@ -55,9 +59,14 @@ const loadPackage = id => {
   `, ...w.args);
   const advance_paid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
 
+  // Decoration booked with the combo (edits on the Decorations page change the bill too)
+  const decor = all("SELECT * FROM decor_plans WHERE package_id = ? AND status <> 'cancelled' ORDER BY id", pkg.id)
+    .map(p => ({ ...p, items: (() => { try { return JSON.parse(p.items) || []; } catch { return []; } })() }));
+  const decor_amount = decor.reduce((s, p) => s + (Number(p.total) || 0), 0);
+
   // Power & generator charges entered later on the combo's hall booking belong on the combined bill
   const extras_amount = hall ? (Number(hall.power_amount) || 0) + (Number(hall.generator_amount) || 0) : 0;
-  const grand_total = (Number(pkg.total_amount) || 0) + extras_amount;
+  const grand_total = (Number(pkg.total_amount) || 0) + extras_amount + decor_amount;
   const balance = Math.max(0, grand_total - advance_paid);
 
   return {
@@ -67,6 +76,8 @@ const loadPackage = id => {
     rooms,
     supplies,
     payments,
+    decor,
+    decor_amount,
     extras_amount,
     grand_total,
     balance,
@@ -103,8 +114,8 @@ r.get('/', (req, res) => {
       hb.slot AS hall_slot,
       (SELECT COUNT(*) FROM room_bookings rb WHERE rb.package_id = p.id) AS rooms_count,
       (SELECT COUNT(*) FROM supply_rentals sr WHERE sr.package_id = p.id) AS supplies_count,
-      (p.total_amount + COALESCE(hb.power_amount, 0) + COALESCE(hb.generator_amount, 0)) AS grand_total,
-      MAX(0, p.total_amount + COALESCE(hb.power_amount, 0) + COALESCE(hb.generator_amount, 0) - p.advance_paid) AS balance
+      (p.total_amount + COALESCE(hb.power_amount, 0) + COALESCE(hb.generator_amount, 0) + ${decorTotalSql('p')}) AS grand_total,
+      MAX(0, p.total_amount + COALESCE(hb.power_amount, 0) + COALESCE(hb.generator_amount, 0) + ${decorTotalSql('p')} - p.advance_paid) AS balance
     FROM event_packages p
     LEFT JOIN hall_bookings hb ON hb.id = p.hall_booking_id
     LEFT JOIN halls h ON h.id = hb.hall_id
@@ -257,8 +268,22 @@ r.post('/', (req, res) => {
     });
   }
 
+  // Supplies discount for the whole set (e.g. the full set price), spread over the lines
+  const supplyShares = spreadDiscount(selectedSupplies.map(s => s.total_rent), num(req.body.supplies_discount));
+  selectedSupplies.forEach((s, i) => { s.discount = supplyShares[i]; s.total_rent -= supplyShares[i]; });
+  supplies_amount -= supplyShares.reduce((s, x) => s + x, 0);
+
+  // 4. Decoration (optional), priced by the server from the lines sent
+  const rawDecor = req.body.decoration;
+  const decoration = rawDecor && Array.isArray(rawDecor.items) && rawDecor.items.length
+    ? parseDecorLines(rawDecor.items, rawDecor.discount) : null;
+  if (decoration && !decoration.items.length) fail('Add at least one decoration item, or remove the decoration');
+
   const total_amount = hall_amount + rooms_amount + supplies_amount;
-  const advance_paid = Math.min(total_amount, Math.max(0, num(req.body.advance)));
+  const advance_paid = Math.min(total_amount + (decoration?.total || 0), Math.max(0, num(req.body.advance)));
+  const guests = Math.max(0, Math.round(num(req.body.guests)));
+  const referral_name = str(req.body.referral_name).slice(0, 100);
+  const referral_phone = str(req.body.referral_phone).slice(0, 30);
 
   // Execute Creation in a Single Transaction
   const createdPackage = tx(() => {
@@ -280,15 +305,27 @@ r.post('/', (req, res) => {
     if (hall_id && hall) {
       const hRes = run(`
         INSERT INTO hall_bookings (
-          package_id, hall_id, customer_name, phone, event_type, event_date, slot,
-          rent, total, paid, status, notes, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?)
+          package_id, hall_id, customer_name, phone, event_type, event_date, slot, guests,
+          rent, total, paid, status, notes, referral_name, referral_phone, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)
       `,
-        packageId, hall.id, customer_name, phone, event_type, event_date, slot,
-        hall_amount, hall_amount, advance_paid, notes ? `Part of Package #${packageId} · ${notes}` : `Part of Package #${packageId}`, req.user.id
+        packageId, hall.id, customer_name, phone, event_type, event_date, slot, guests,
+        hall_amount, hall_amount, advance_paid, notes ? `Part of Package #${packageId} · ${notes}` : `Part of Package #${packageId}`,
+        referral_name, referral_phone, req.user.id
       );
       hallBookingId = hRes.id;
       setBillNo('hall_bookings', hallBookingId);
+    }
+
+    // Decoration plan, on this combo's bill
+    if (decoration) {
+      const { id: planId } = run(`
+        INSERT INTO decor_plans (package_id, hall_booking_id, customer_name, phone, event_name, event_date,
+          items, subtotal, discount, total, notes, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, packageId, hallBookingId, customer_name, phone, event_type, event_date,
+        JSON.stringify(decoration.items), decoration.subtotal, decoration.discount, decoration.total, str(rawDecor.notes), req.user.id);
+      setBillNo('decor_plans', planId);
     }
 
     // 3. Create Room Bookings
@@ -321,12 +358,12 @@ r.post('/', (req, res) => {
       const srRes = run(`
         INSERT INTO supply_rentals (
           package_id, supply_id, customer_name, phone, event_name, rent_date, expected_return_date,
-          quantity, rent_rate, total_rent, status, notes, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'rented', ?, ?)
+          quantity, rent_rate, total_rent, discount, status, notes, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'rented', ?, ?)
       `,
         packageId, sup.supply_id, customer_name, phone,
         `${event_type} (${hall ? hall.name : 'Function'})`,
-        event_date, check_out_date, sup.quantity, sup.rent_rate, sup.total_rent,
+        event_date, check_out_date, sup.quantity, sup.rent_rate, sup.total_rent, sup.discount || 0,
         `Part of Event Package #${packageId}`, req.user.id
       );
       supplyRentalIds.push(srRes.id);
@@ -398,6 +435,26 @@ r.post('/:id/payment', (req, res) => {
   res.json(loadPackage(pkg.id));
 });
 
+// PATCH /packages/:id/rooms/:roomBookingId (admin only): change one combo room's rate per night.
+// The room's total and the combo bill change by the same amount.
+r.patch('/:id/rooms/:roomBookingId', requireAdmin, (req, res) => {
+  const pkg = loadPackage(req.params.id);
+  if (pkg.status === 'cancelled') fail('This combo is cancelled');
+  const room = found(pkg.rooms.find(x => x.id === Number(req.params.roomBookingId)), 'Room in this combo');
+  if (room.status === 'cancelled') fail('This room booking is cancelled');
+  const rate = num(req.body.rate, -1);
+  if (rate < 0) fail('Enter a valid rate per night');
+  const total = Math.max(0, Math.round(rate * nightsBetween(room.check_in, room.check_out)) - (Number(room.discount) || 0));
+  const diff = total - (Number(room.total) || 0);
+  tx(() => {
+    run('UPDATE room_bookings SET rate = ?, total = ? WHERE id = ?', rate, total, room.id);
+    run('UPDATE event_packages SET rooms_amount = rooms_amount + ?, total_amount = total_amount + ? WHERE id = ?', diff, diff, pkg.id);
+  });
+  log(req.user.id, 'combo room rate changed',
+    `${pkg.bill_no || `#${pkg.id}`} · ${room.room_name} · ${inr(room.rate)} → ${inr(rate)}/night · total ${inr(total)}`);
+  res.json(loadPackage(pkg.id));
+});
+
 // PATCH /packages/:id/cancel: Cancel the bulk event package
 r.patch('/:id/cancel', (req, res) => {
   const pkg = loadPackage(req.params.id);
@@ -412,8 +469,9 @@ r.patch('/:id/cancel', (req, res) => {
       run("UPDATE hall_bookings SET status = 'cancelled' WHERE id = ?", pkg.hall_booking_id);
     }
 
-    // 3. Cancel Room Bookings
+    // 3. Cancel Room Bookings and the combo's decoration
     run("UPDATE room_bookings SET status = 'cancelled' WHERE package_id = ?", pkg.id);
+    run("UPDATE decor_plans SET status = 'cancelled' WHERE package_id = ?", pkg.id);
 
     // 4. Return all rented supplies back to stock
     for (const sup of pkg.supplies) {
@@ -432,5 +490,38 @@ r.patch('/:id/cancel', (req, res) => {
   });
 
   log(req.user.id, 'event package cancelled', `${pkg.customer_name} (Package #${pkg.id})`);
+  res.json({ ok: true });
+});
+
+// DELETE /packages/:id (admin only): remove a combo for good, with its hall booking, rooms,
+// supply rentals and every payment. Supplies still out go back to stock first. Its bill number
+// is never given to anyone else.
+r.delete('/:id', requireAdmin, (req, res) => {
+  const pkg = loadPackage(req.params.id);
+  const w = comboPaymentsWhere(pkg); // read before the rooms are removed
+  tx(() => {
+    for (const sup of pkg.supplies) {
+      if (sup.status !== 'rented') continue;
+      const s = get('SELECT quantity, rented_quantity FROM supplies WHERE id = ?', sup.supply_id);
+      if (!s) continue;
+      const newAvail = s.quantity + sup.quantity;
+      const newRented = Math.max(0, (Number(s.rented_quantity) || 0) - sup.quantity);
+      run('UPDATE supplies SET quantity = ?, rented_quantity = ? WHERE id = ?', newAvail, newRented, sup.supply_id);
+      run("INSERT INTO stock_moves (supply_id, type, quantity, balance, note, created_by) VALUES (?, 'in', ?, ?, ?, ?)",
+        sup.supply_id, sup.quantity, newAvail, `Returned: combo ${pkg.bill_no || `#${pkg.id}`} deleted`, req.user.id);
+    }
+    run(`DELETE FROM payments WHERE ${w.sql}`, ...w.args);
+    run('DELETE FROM decor_plans WHERE package_id = ?', pkg.id);
+    if (pkg.hall_booking_id) {
+      run('UPDATE decor_plans SET hall_booking_id = NULL WHERE hall_booking_id = ?', pkg.hall_booking_id);
+      run('UPDATE event_packages SET hall_booking_id = NULL WHERE id = ?', pkg.id);
+    }
+    run('DELETE FROM supply_rentals WHERE package_id = ?', pkg.id);
+    run('DELETE FROM room_bookings WHERE package_id = ?', pkg.id);
+    if (pkg.hall_booking_id) run('DELETE FROM hall_bookings WHERE id = ?', pkg.hall_booking_id);
+    run('DELETE FROM event_packages WHERE id = ?', pkg.id);
+  });
+  log(req.user.id, 'combo deleted',
+    `${pkg.bill_no || `#${pkg.id}`} · ${pkg.customer_name} · ${pkg.event_date} · payments ${inr(pkg.advance_paid)} removed`);
   res.json({ ok: true });
 });

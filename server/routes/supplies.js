@@ -3,6 +3,7 @@ import { all, get, log, run, tx, today } from '../db.js';
 import { fail, found, num, str } from '../lib/http.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { setBillNo } from '../lib/billno.js';
+import { spreadDiscount } from '../lib/discount.js';
 
 const r = Router();
 export default r;
@@ -157,6 +158,13 @@ r.post('/rent-bulk', (req, res) => {
     if (quantity <= 0) fail('Quantity must be greater than zero for all items');
     return { supply_id, quantity, rent_rate };
   });
+  // One discount for the whole order (e.g. the full set price), spread over the lines
+  const rates = items.map(it => {
+    const s = load(it.supply_id);
+    return it.rent_rate !== undefined && it.rent_rate !== '' ? it.rent_rate : (Number(s.rent_rate) || 0);
+  });
+  const shares = spreadDiscount(items.map((it, i) => it.quantity * rates[i]), num(req.body.discount));
+  const discount = shares.reduce((s, x) => s + x, 0);
 
   const result = tx(() => {
     const dateStr = rent_date.replace(/-/g, '');
@@ -167,14 +175,15 @@ r.post('/rent-bulk', (req, res) => {
     const createdRentals = [];
 
     let groupBillNo = null;
-    for (const it of items) {
+    for (const [index, it] of items.entries()) {
       const s = load(it.supply_id);
       if (it.quantity > s.quantity) {
         fail(`Cannot rent ${it.quantity} ${s.unit} of "${s.name}". Only ${s.quantity} ${s.unit} currently available in stock!`);
       }
 
-      const rate = it.rent_rate !== undefined && it.rent_rate !== '' ? it.rent_rate : (Number(s.rent_rate) || 0);
-      const total_rent = it.quantity * rate;
+      const rate = rates[index];
+      const lineDiscount = shares[index];
+      const total_rent = it.quantity * rate - lineDiscount;
       grandTotalRent += total_rent;
 
       const newAvailable = s.quantity - it.quantity;
@@ -185,10 +194,10 @@ r.post('/rent-bulk', (req, res) => {
       const { id } = run(
         `INSERT INTO supply_rentals (
           supply_id, rental_group_id, customer_name, phone, event_name, rent_date, expected_return_date,
-          quantity, rent_rate, total_rent, advance_amount, payment_method, status, notes, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'rented', ?, ?)`,
+          quantity, rent_rate, total_rent, discount, advance_amount, payment_method, status, notes, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'rented', ?, ?)`,
         s.id, rental_group_id, customer_name, phone, event_name, rent_date, expected_return_date,
-        it.quantity, rate, total_rent, advance_amount, payment_method, notes, req.user.id
+        it.quantity, rate, total_rent, lineDiscount, advance_amount, payment_method, notes, req.user.id
       );
       groupBillNo = setBillNo('supply_rentals', id, groupBillNo || undefined); // one bill for the whole order
 
@@ -204,6 +213,7 @@ r.post('/rent-bulk', (req, res) => {
         unit: s.unit,
         rent_rate: rate,
         total_rent,
+        discount: lineDiscount,
       });
     }
 
@@ -218,6 +228,7 @@ r.post('/rent-bulk', (req, res) => {
       expected_return_date,
       items_count: createdRentals.length,
       total_rent: grandTotalRent,
+      discount,
       advance_amount,
       balance: Math.max(0, grandTotalRent - advance_amount),
       payment_method,
