@@ -1,12 +1,11 @@
 import { fmtDate, fmtDateTime, inr, nights, roomTimes, slotName, slotTime, today } from '../utils.js';
 
 /**
- * WhatsApp messages. Every message has the same layout:
- *   property name and tagline
+ * WhatsApp messages. Every message has the same layout (the hall name sits at the end):
  *   greeting and message in English
  *   details (booking, dates) and the money: total, paid, balance
  *   the same message in Telugu
- *   address and phone
+ *   hall name, address and phone
  * They are opened in WhatsApp with the text filled in (see openWhatsApp); nothing is sent
  * automatically.
  */
@@ -45,8 +44,6 @@ const WHEN = {
 function property(settings) {
   return {
     name: settings?.property_name || 'SMC Function Hall (A/C)',
-    tagline: settings?.property_tagline || 'Kalyana Mandapam & Function Hall',
-    owner: settings?.banner_name || '',
     address: settings?.address || 'Next to BOI, K.T. Road, Palasa – Kasibugga',
     phone: settings?.phone || '94411 17278 / 94410 89616',
   };
@@ -62,17 +59,15 @@ const bullets = rows => rows.filter(([, v]) => v !== undefined && v !== null && 
  * Put a message together. `en` and `te` are the message paragraphs; `details` and `bill` are
  * [label, value] rows shown once between the two languages.
  */
-function compose(settings, { icon = '🏛', name, en, te, detailsTitle = 'Booking details', details = [], bill = [] }) {
+function compose(settings, { name, en, te, detailsTitle = 'Booking details', details = [], bill = [] }) {
   const p = property(settings);
   const parts = [
-    `${icon} *${p.name.toUpperCase()}*\n_${p.tagline}_${p.owner ? `\nProprietor: ${p.owner}` : ''}`,
-    LINE,
     `🙏 Namaste *${name}*,`,
     en.filter(Boolean).join('\n\n'),
   ];
   if (details.length) parts.push(`📋 *${detailsTitle}*\n${bullets(details)}`);
   if (bill.length) parts.push(`💰 *Payment*\n${bullets(bill)}`);
-  parts.push(LINE, `🙏 నమస్కారం *${name}* గారు,`, te.filter(Boolean).join('\n\n'), LINE, `📍 ${p.address}\n📞 ${p.phone}`);
+  parts.push(LINE, `🙏 నమస్కారం *${name}* గారు,`, te.filter(Boolean).join('\n\n'), LINE, `🏛 *${p.name}*\n📍 ${p.address}\n📞 ${p.phone}`);
   return parts.join('\n\n');
 }
 
@@ -131,7 +126,7 @@ export function buildRoomMessage(b, settings, type = 'booking') {
   if (type === 'payment') {
     const got = paymentReceived(b.payments, status.balance);
     return compose(settings, {
-      icon: '🏨', name: b.guest_name, details, bill: status.bill,
+      name: b.guest_name, details, bill: status.bill,
       en: [got.en, status.balance > 0 && status.en],
       te: [got.te, status.balance > 0 && status.te],
     });
@@ -139,14 +134,14 @@ export function buildRoomMessage(b, settings, type = 'booking') {
 
   if (type === 'check_out') {
     return compose(settings, {
-      icon: '🏨', name: b.guest_name, detailsTitle: 'Stay details', details, bill: status.bill,
+      name: b.guest_name, detailsTitle: 'Stay details', details, bill: status.bill,
       en: ['Thank you for staying with us! We hope you had a comfortable stay. Please visit us again. 🙏', status.en],
       te: ['మా వద్ద బస చేసినందుకు ధన్యవాదాలు! మీ బస సౌకర్యంగా గడిచిందని ఆశిస్తున్నాము. దయచేసి మళ్ళీ రండి. 🙏', status.te],
     });
   }
 
   return compose(settings, {
-    icon: '🏨', name: b.guest_name, details, bill: status.bill,
+    name: b.guest_name, details, bill: status.bill,
     en: [
       checkedIn
         ? `Welcome! You have checked in to *${b.room_name}*. We wish you a comfortable stay.`
@@ -264,7 +259,7 @@ export function buildSupplyMessage(item, move, settings) {
     const total = Number(move.total_rent) || 0;
     const status = paymentStatus({ total, paid: Math.min(total, Number(move.advance_amount) || 0), when: returned ? 'soon' : 'return' });
     return compose(settings, {
-      icon: '📦', name: move.customer_name, detailsTitle: 'Rental details',
+      name: move.customer_name, detailsTitle: 'Rental details',
       details: [
         ['Bill No', move.bill_no],
         ['Item', `${name} × ${move.quantity} ${unit}`],
@@ -283,9 +278,7 @@ export function buildSupplyMessage(item, move, settings) {
   const p = property(settings);
   const isIn = move?.type === 'in';
   return [
-    `📦 *${p.name.toUpperCase()}*`,
-    `*Stock ${isIn ? 'received' : 'issued'}*`,
-    LINE,
+    `📦 *Stock ${isIn ? 'received' : 'issued'}*`,
     bullets([
       ['Item', `${name} (${item?.category || move?.supply_category || 'General'})`],
       ['Quantity', `${Math.abs(move?.quantity || 0)} ${unit}`],
@@ -294,7 +287,7 @@ export function buildSupplyMessage(item, move, settings) {
       ['Date', fmtDateTime(move?.created_at || today())],
     ]),
     LINE,
-    `📞 ${p.phone}`,
+    `🏛 *${p.name}*\n📞 ${p.phone}`,
   ].join('\n\n');
 }
 
@@ -309,7 +302,7 @@ export function buildBulkRentalMessage(order, settings) {
     return `${i + 1}. ${it.supply_name || it.name} — ${it.quantity} ${unit} × ₹${it.rent_rate} = ${inr(it.total_rent || it.quantity * it.rent_rate)}`;
   }).join('\n');
   return compose(settings, {
-    icon: '📦', name: order.customer_name, detailsTitle: `Items rented (${items.length})`,
+    name: order.customer_name, detailsTitle: `Items rented (${items.length})`,
     details: [
       ['Bill No', order.bill_no || order.rentals?.[0]?.bill_no],
       ...(order.event_name ? [['Function', order.event_name]] : []),
@@ -334,7 +327,7 @@ export function buildDecorMessage(plan, settings) {
   }).join('\n\n');
   const discount = Number(plan.discount) || 0;
   return compose(settings, {
-    icon: '🌸', name: plan.customer_name, detailsTitle: 'Decoration details',
+    name: plan.customer_name, detailsTitle: 'Decoration details',
     details: [
       ['Bill No', plan.bill_no],
       ...(plan.event_name ? [['Function', plan.event_name]] : []),
