@@ -47,7 +47,7 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, i
     : isDecor
     ? [{ value: 'decor', label: 'Decoration quote' }]
     : isBand
-    ? [{ value: 'band', label: 'To customer' }, { value: 'band_team', label: 'Timing to band team' }]
+    ? [{ value: 'band', label: 'To customer' }, { value: 'band_team', label: 'Timing to sannai team' }]
     : [{ value: 'supply', label: 'Supply receipt' }];
 
   // Open on the message that fits where the booking is: thanks once it is over
@@ -56,7 +56,7 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, i
       : isRoom && booking?.status === 'checked_out' ? 'check_out'
       : isHall && booking?.status === 'completed' ? 'completed'
         : 'booking');
-  // The band team's message goes to the band's own phone, the rest to the customer
+  // The sannai team's message goes to the team's own phone, the rest to the customer
   const phoneFor = t => (isSupply ? '' : isBand && t === 'band_team' ? booking?.team_phone || '' : booking?.phone || '');
   const [phone, setPhone] = useState(() => phoneFor(template));
   const changeTemplate = t => { setTemplate(t); if (isBand) setPhone(phoneFor(t)); };

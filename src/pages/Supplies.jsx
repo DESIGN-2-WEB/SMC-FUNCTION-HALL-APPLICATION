@@ -13,7 +13,6 @@ import { Combobox, Select } from '../components/pickers.jsx';
 import { addDays, fmtDate, fmtDateTime, inr, today } from '../utils.js';
 import WhatsAppModal, { WhatsAppIcon } from '../components/WhatsAppModal.jsx';
 import { useFullSetDiscount } from '../fullSet.js';
-import BandMelamTab from '../components/BandMelam.jsx';
 
 const DEFAULT_SUPPLY_CATEGORIES = [
   'Cooking Vessels',
@@ -224,11 +223,6 @@ export default function Supplies() {
           </div>
         }
       />
-
-      {/* Band Melam: a performance booked for an event, kept apart from the stock items below */}
-      <div id="band-melam" className="mb-8">
-        <BandMelamTab isAdmin={isAdmin} hallBookings={hallBookingsApi.data || []} />
-      </div>
 
       {/* Top Stat Cards */}
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

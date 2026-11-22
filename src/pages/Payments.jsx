@@ -89,7 +89,7 @@ export default function Payments() {
                   <tr key={p.id} className="transition hover:bg-gold-50/40">
                     <td className="td whitespace-nowrap">{fmtDate(p.paid_on)}</td>
                     <td className="td min-w-56">
-                      <button className="cursor-pointer text-left font-medium text-ink-900 hover:text-gold-600" onClick={() => nav(p.kind === 'band' ? '/supplies' : `/${p.kind === 'room' ? 'rooms' : 'halls'}?booking=${p.booking_id}`)}>
+                      <button className="cursor-pointer text-left font-medium text-ink-900 hover:text-gold-600" onClick={() => nav(p.kind === 'band' ? '/sannai-melam' : `/${p.kind === 'room' ? 'rooms' : 'halls'}?booking=${p.booking_id}`)}>
                         {p.party || `Booking #${p.booking_id}`}
                       </button>
                       {p.note && <p className="text-xs text-stone-500">{p.note}</p>}

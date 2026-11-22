@@ -11,6 +11,7 @@ const pages = {
   Dashboard: () => import('./pages/Dashboard.jsx'),
   Rooms: () => import('./pages/Rooms.jsx'),
   Halls: () => import('./pages/Halls.jsx'),
+  BandMelam: () => import('./pages/BandMelam.jsx'),
   Supplies: () => import('./pages/Supplies.jsx'),
   Decorations: () => import('./pages/Decorations.jsx'),
   Payments: () => import('./pages/Payments.jsx'),
@@ -22,6 +23,7 @@ const Login = lazy(() => import('./pages/Login.jsx'));
 const Dashboard = lazy(pages.Dashboard);
 const Rooms = lazy(pages.Rooms);
 const Halls = lazy(pages.Halls);
+const BandMelam = lazy(pages.BandMelam);
 const Supplies = lazy(pages.Supplies);
 const Decorations = lazy(pages.Decorations);
 const Payments = lazy(pages.Payments);
@@ -64,6 +66,7 @@ function Shell() {
         <Route index element={<Dashboard />} />
         <Route path="rooms" element={<Rooms />} />
         <Route path="halls" element={<Halls />} />
+        <Route path="sannai-melam" element={<BandMelam />} />
         <Route path="supplies" element={<Supplies />} />
         <Route path="decorations" element={<Decorations />} />
         <Route path="payments" element={<Payments />} />

@@ -668,6 +668,7 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
               {addons.roomsTotal > 0 && ` + Rooms ${inr(addons.roomsTotal)}`}
               {addons.suppliesTotal > 0 && ` + Supplies ${inr(addons.suppliesTotal)}`}
               {addons.decorTotal > 0 && ` + Decoration ${inr(addons.decorTotal)}`}
+              {addons.bandTotal > 0 && ` + Sannai Melam ${inr(addons.bandTotal)}`}
             </span>
             <span className="text-sm font-bold text-gold-900">{inr(rentVal + addons.total)}</span>
           </div>

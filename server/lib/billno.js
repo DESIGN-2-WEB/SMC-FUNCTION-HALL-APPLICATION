@@ -2,12 +2,12 @@ import { all, get, run, today } from '../db.js';
 
 /*
  * Bill numbers printed on receipts and WhatsApp messages, e.g. "SMC-R-26-0001":
- * the hall code, the kind (R room, H banquet hall, S supplies, C combo, D decoration, B band melam), the
+ * the hall code, the kind (R room, H banquet hall, S supplies, C combo, D decoration, M sannai melam), the
  * year the booking was made (26 = 2026) and a running number for that kind in that year.
  * The number has no day or month in it, so it is never mistaken for a date. The database id
  * stays internal.
  */
-const LETTER = { room_bookings: 'R', hall_bookings: 'H', supply_rentals: 'S', event_packages: 'C', decor_plans: 'D', band_bookings: 'B' };
+const LETTER = { room_bookings: 'R', hall_bookings: 'H', supply_rentals: 'S', event_packages: 'C', decor_plans: 'D', band_bookings: 'M' };
 export const BILL_TABLES = Object.keys(LETTER);
 
 const CODE = 'SMC';
@@ -60,6 +60,14 @@ export function backfillBillNos() {
   if (oldFormat) {
     for (const table of BILL_TABLES) run(`UPDATE ${table} SET bill_no = ''`);
     run("DELETE FROM settings WHERE key LIKE '\\_bill:%' ESCAPE '\\'");
+  }
+  // Band Melam was renamed Sannai Melam: its bills move from "B" to "M", keeping their numbers
+  run("UPDATE band_bookings SET bill_no = 'SMC-M-' || substr(bill_no, 7) WHERE bill_no LIKE 'SMC-B-%'");
+  for (const { key, value } of all("SELECT key, value FROM settings WHERE substr(key, 1, 6) = '_bill:' AND key LIKE '%:B'")) {
+    const mKey = `${key.slice(0, -1)}M`;
+    const m = Number(get('SELECT value FROM settings WHERE key = ?', mKey)?.value) || 0;
+    run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', mKey, String(Math.max(m, Number(value) || 0)));
+    run('DELETE FROM settings WHERE key = ?', key);
   }
   for (const table of BILL_TABLES) {
     const grouped = table === 'supply_rentals';

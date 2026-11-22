@@ -292,7 +292,7 @@ export function migrate() {
     db.exec("ALTER TABLE supply_rentals ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'Cash'");
   }
 
-  // Payments for a Band Melam booking (kind 'band'). An older database only allowed room and hall,
+  // Payments for a Sannai Melam booking (kind 'band'). An older database only allowed room and hall,
   // so its payments table is rebuilt once with the wider rule (same rows, same ids).
   const paySql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'payments'").get()?.sql || '';
   if (paySql.includes("CHECK (kind IN ('room','hall'))")) {
@@ -344,7 +344,7 @@ export function migrate() {
   CREATE INDEX IF NOT EXISTS idx_decor_items_area ON decor_items(area);
   CREATE INDEX IF NOT EXISTS idx_decor_plans_date ON decor_plans(event_date);
 
-  -- Band Melam: a performance booked for an event (no stock)
+  -- Sannai Melam: a performance booked for an event (no stock)
   CREATE TABLE IF NOT EXISTS band_bookings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bill_no TEXT NOT NULL DEFAULT '',
@@ -364,9 +364,17 @@ export function migrate() {
   );
   CREATE INDEX IF NOT EXISTS idx_band_bookings_date ON band_bookings(event_date);
   `);
-  // The band team's phone, for sending them the programme timing on WhatsApp
-  if (!new Set(db.prepare('PRAGMA table_info(band_bookings)').all().map(c => c.name)).has('team_phone'))
-    db.exec("ALTER TABLE band_bookings ADD COLUMN team_phone TEXT NOT NULL DEFAULT ''");
+  // The sannai team's phone, for sending them the programme timing on WhatsApp
+  const bandCols = new Set(db.prepare('PRAGMA table_info(band_bookings)').all().map(c => c.name));
+  if (!bandCols.has('team_phone')) db.exec("ALTER TABLE band_bookings ADD COLUMN team_phone TEXT NOT NULL DEFAULT ''");
+  // A Sannai Melam booked with a hall is on that combo's one bill (paid there)
+  if (!bandCols.has('package_id'))
+    db.exec('ALTER TABLE band_bookings ADD COLUMN package_id INTEGER REFERENCES event_packages(id) ON DELETE SET NULL');
+  // A photo of each decoration design (e.g. "Pink stage"): a small one for lists and a larger
+  // one to show the customer, both kept in the database as image data
+  const decorItemCols = new Set(db.prepare('PRAGMA table_info(decor_items)').all().map(c => c.name));
+  for (const col of ['photo', 'thumb'])
+    if (!decorItemCols.has(col)) db.exec(`ALTER TABLE decor_items ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`);
   // A decoration booked with a hall (and rooms or supplies) is part of that combo's one bill
   if (!new Set(db.prepare('PRAGMA table_info(decor_plans)').all().map(c => c.name)).has('package_id'))
     db.exec('ALTER TABLE decor_plans ADD COLUMN package_id INTEGER REFERENCES event_packages(id) ON DELETE SET NULL');
@@ -429,11 +437,11 @@ function fillTimings() {
  * A marker setting stops them coming back after someone deletes them.
  */
 const DECOR_STARTER = [
-  ['Stage', 'Stage flower backdrop'], ['Stage', 'Stage side pillars'], ['Stage', 'Stage lighting'],
-  ['Entrance', 'Entrance flower arch'], ['Entrance', 'Welcome board'], ['Entrance', 'Door flower decoration'],
-  ['Walkway', 'Red carpet'], ['Walkway', 'Creeper arches'], ['Walkway', 'Walkway flower arch'],
-  ['Photo booths', 'Sequin photo wall'], ['Photo booths', 'Sunflower petal backdrop'], ['Photo booths', 'Flower petal panel'],
-  ['Main outdoor staircase', 'Railing flower garlands'], ['Main outdoor staircase', 'String lights'],
+  ['Stage', 'Stage type 1'], ['Stage', 'Stage type 2'], ['Stage', 'Stage type 3'],
+  ['Entrance', 'Entrance type 1'], ['Entrance', 'Entrance type 2'],
+  ['Walkway', 'Walkway type 1'], ['Walkway', 'Walkway type 2'],
+  ['Photo booths', 'Photo booth type 1'], ['Photo booths', 'Photo booth type 2'],
+  ['Main outdoor staircase', 'Staircase type 1'],
 ];
 function seedDecorItems() {
   // No transaction of its own: applyDefaults also runs inside the restore transaction

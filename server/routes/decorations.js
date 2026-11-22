@@ -3,6 +3,7 @@ import { all, get, log, run, tx } from '../db.js';
 import { fail, found, inr, isDate, num, str } from '../lib/http.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { setBillNo } from '../lib/billno.js';
+import { hallBillFor } from '../lib/combo.js';
 
 /*
  * Decorations, planned area by area (stage, entrance, walkway...).
@@ -31,28 +32,50 @@ const parseItem = b => {
   return d;
 };
 
+// Photos arrive already shrunk by the browser, as JPEG/PNG/WebP image data
+const IMAGE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+const parsePhoto = (b, item) => {
+  if (b.photo === undefined) return { photo: item?.photo || '', thumb: item?.thumb || '' }; // unchanged
+  const photo = str(b.photo), thumb = str(b.thumb);
+  if (!photo) return { photo: '', thumb: '' }; // removed
+  if (!IMAGE.test(photo) || !IMAGE.test(thumb)) fail('That photo could not be read. Try another picture.');
+  if (photo.length > 600000 || thumb.length > 80000) fail('That photo is too large. Try a smaller picture.');
+  return { photo, thumb };
+};
+// Lists carry only the small photo; the large one is fetched when someone opens it
+const LIST_COLS = "id, area, name, unit, price, thumb, photo <> '' AS has_photo, created_at";
+
 const sameItem = (d, id = 0) =>
   get('SELECT id FROM decor_items WHERE area = ? COLLATE NOCASE AND name = ? COLLATE NOCASE AND id <> ?', d.area, d.name, id);
 
 r.get('/items', (req, res) => {
-  res.json(all('SELECT * FROM decor_items ORDER BY area, name'));
+  res.json(all(`SELECT ${LIST_COLS} FROM decor_items ORDER BY area, name`));
+});
+
+r.get('/items/:id/photo', (req, res) => {
+  const item = found(get('SELECT id, name, photo FROM decor_items WHERE id = ?', req.params.id), 'Decoration item');
+  res.json({ id: item.id, name: item.name, photo: item.photo });
 });
 
 r.post('/items', requireAdmin, (req, res) => {
   const d = parseItem(req.body);
   if (sameItem(d)) fail(`"${d.name}" is already in ${d.area}`);
-  const { id } = run('INSERT INTO decor_items (area, name, unit, price) VALUES (?, ?, ?, ?)', d.area, d.name, d.unit, d.price);
-  log(req.user.id, 'decoration item added', `${d.area}: ${d.name} ${inr(d.price)}`);
-  res.status(201).json(get('SELECT * FROM decor_items WHERE id = ?', id));
+  const p = parsePhoto(req.body);
+  const { id } = run('INSERT INTO decor_items (area, name, unit, price, photo, thumb) VALUES (?, ?, ?, ?, ?, ?)',
+    d.area, d.name, d.unit, d.price, p.photo, p.thumb);
+  log(req.user.id, 'decoration item added', `${d.area}: ${d.name} ${inr(d.price)}${p.photo ? ' (with photo)' : ''}`);
+  res.status(201).json(get(`SELECT ${LIST_COLS} FROM decor_items WHERE id = ?`, id));
 });
 
 r.put('/items/:id', requireAdmin, (req, res) => {
   const item = found(get('SELECT * FROM decor_items WHERE id = ?', req.params.id), 'Decoration item');
   const d = parseItem(req.body);
   if (sameItem(d, item.id)) fail(`"${d.name}" is already in ${d.area}`);
-  run('UPDATE decor_items SET area = ?, name = ?, unit = ?, price = ? WHERE id = ?', d.area, d.name, d.unit, d.price, item.id);
+  const p = parsePhoto(req.body, item);
+  run('UPDATE decor_items SET area = ?, name = ?, unit = ?, price = ?, photo = ?, thumb = ? WHERE id = ?',
+    d.area, d.name, d.unit, d.price, p.photo, p.thumb, item.id);
   log(req.user.id, 'decoration item updated', `${d.area}: ${d.name} ${inr(d.price)}`);
-  res.json(get('SELECT * FROM decor_items WHERE id = ?', item.id));
+  res.json(get(`SELECT ${LIST_COLS} FROM decor_items WHERE id = ?`, item.id));
 });
 
 r.delete('/items/:id', requireAdmin, (req, res) => {
@@ -128,9 +151,11 @@ const COLS = ['hall_booking_id', 'customer_name', 'phone', 'event_name', 'event_
 r.post('/plans', (req, res) => {
   const d = parsePlan(req.body);
   const id = tx(() => {
+    // Planned for an upcoming hall booking: it goes on that hall's combined bill
+    const packageId = hallBillFor(d.hall_booking_id, req.user.id);
     const { id } = run(
-      `INSERT INTO decor_plans (${COLS.join(', ')}, created_by) VALUES (${COLS.map(() => '?').join(', ')}, ?)`,
-      ...COLS.map(c => d[c]), req.user.id,
+      `INSERT INTO decor_plans (${COLS.join(', ')}, package_id, created_by) VALUES (${COLS.map(() => '?').join(', ')}, ?, ?)`,
+      ...COLS.map(c => d[c]), packageId, req.user.id,
     );
     setBillNo('decor_plans', id);
     return id;
@@ -143,7 +168,12 @@ r.put('/plans/:id', (req, res) => {
   const plan = loadPlan(req.params.id);
   if (plan.status !== 'planned' && req.user.role !== 'admin') fail('Only the admin can change a finished or cancelled plan', 403);
   const d = parsePlan(req.body);
-  run(`UPDATE decor_plans SET ${COLS.map(c => `${c} = ?`).join(', ')} WHERE id = ?`, ...COLS.map(c => d[c]), plan.id);
+  if (plan.package_id && Number(d.hall_booking_id || 0) !== Number(plan.hall_booking_id || 0))
+    fail(`This decoration is on combined bill ${plan.combo_bill_no || ''}. Cancel it and plan it again to move it.`.replace(' .', '.'));
+  tx(() => {
+    const packageId = plan.package_id || hallBillFor(d.hall_booking_id, req.user.id);
+    run(`UPDATE decor_plans SET ${COLS.map(c => `${c} = ?`).join(', ')}, package_id = ? WHERE id = ?`, ...COLS.map(c => d[c]), packageId, plan.id);
+  });
   log(req.user.id, 'decoration plan updated', `${d.customer_name} · ${d.event_date} · ${inr(d.total)}`);
   res.json(loadPlan(plan.id));
 });

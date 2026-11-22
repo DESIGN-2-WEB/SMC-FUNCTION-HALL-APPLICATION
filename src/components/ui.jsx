@@ -188,21 +188,30 @@ function validationMessage(el) {
   return el.validationMessage;
 }
 
+// How many overlays are open. The page behind stops scrolling while any is open and scrolls
+// again when the last one closes. (Each overlay used to save and restore the page's setting
+// itself; with two open while the page refreshed, they could save each other's "locked"
+// value and leave the page unable to scroll after both had closed.)
+let openLayers = 0;
+
 /** Overlay shell shared by Modal and the confirm dialog. Only the top-most layer reacts to Escape. */
 function Layer({ onClose, className, children }) {
   const ref = useRef(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
+    openLayers += 1;
+    document.body.style.overflow = 'hidden';
     const onKey = e => {
-      if (e.key === 'Escape' && ref.current === [...document.querySelectorAll('[data-modal]')].pop()) onClose?.();
+      if (e.key === 'Escape' && ref.current === [...document.querySelectorAll('[data-modal]')].pop()) closeRef.current?.();
     };
     document.addEventListener('keydown', onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prev;
+      openLayers = Math.max(0, openLayers - 1);
+      if (!openLayers) document.body.style.overflow = '';
     };
-  }, [onClose]);
+  }, []); // once per overlay: opening and closing only
   return (
     <div ref={ref} data-modal className={cn('fixed inset-0 flex justify-center', className)}>
       <div className="absolute inset-0 animate-fade bg-ink-950/45 backdrop-blur-[2px]" onClick={onClose} />

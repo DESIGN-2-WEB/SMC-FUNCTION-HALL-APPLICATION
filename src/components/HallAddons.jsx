@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BedDouble, Boxes, Flower2, Search, X } from 'lucide-react';
+import { BedDouble, Boxes, Drum, Flower2, Search, X } from 'lucide-react';
 import { useApi } from '../hooks.js';
 import { useSettings } from '../settings.jsx';
 import { Button, Field, Input, cn } from './ui.jsx';
@@ -23,7 +23,8 @@ export function useHallAddons(eventDate) {
   const supplies = useApi('/supplies');
   const decorItems = useApi('/decorations/items');
 
-  const [open, setOpen] = useState({ rooms: false, supplies: false, decor: false });
+  const [open, setOpen] = useState({ rooms: false, supplies: false, decor: false, band: false });
+  const [band, setBand] = useState({ timing: '', team: '', team_phone: '', players: '', amount: '' });
   // Rooms default to the event day until the next day; they follow the event date until changed
   const [dates, setDates] = useState({ in: eventDate, out: addDays(eventDate, 1), touched: false });
   useEffect(() => {
@@ -53,11 +54,12 @@ export function useHallAddons(eventDate) {
   });
   const decorSub = open.decor ? decorSubtotal(decorLines) : 0;
   const decorTotal = open.decor ? Math.max(0, decorSub - Math.min(decorSub, n(decorDiscount))) : 0;
+  const bandTotal = open.band ? n(band.amount) : 0;
 
   const chosenRooms = open.rooms ? Object.keys(roomRates).map(Number) : [];
   const chosenSupplies = open.supplies ? Object.entries(supplyQty).filter(([, q]) => n(q) > 0) : [];
   const decorPayload = open.decor ? decorItemsPayload(decorLines) : [];
-  const any = chosenRooms.length > 0 || chosenSupplies.length > 0 || decorPayload.length > 0;
+  const any = chosenRooms.length > 0 || chosenSupplies.length > 0 || decorPayload.length > 0 || bandTotal > 0;
 
   /** What the combo needs from the extras (the server checks stock and clashes, and prices everything again). */
   const payload = () => ({
@@ -70,11 +72,13 @@ export function useHallAddons(eventDate) {
     }),
     supplies_discount: open.supplies ? fullSet.discount : 0,
     ...(decorPayload.length ? { decoration: { items: decorPayload, discount: n(decorDiscount) } } : {}),
+    ...(bandTotal > 0 ? { band: { ...band, amount: n(band.amount), players: n(band.players) } } : {}),
   });
 
   /** Problems to fix before saving, or null. */
   const problem = () => {
     if (open.rooms && chosenRooms.length && !nightCount) return 'Rooms: check-out must be after check-in';
+    if (open.band && !n(band.amount)) return 'Sannai Melam: enter the price, or close the Sannai Melam section';
     for (const [id, q] of chosenSupplies) {
       const s = supplyList.find(x => x.id === Number(id));
       if (s && n(q) > n(s.quantity)) return `Only ${s.quantity} ${s.unit} of ${s.name} available`;
@@ -87,7 +91,8 @@ export function useHallAddons(eventDate) {
     open, setOpen, dates, setDates, nightCount,
     roomRates, setRoomRates, supplyQty, setSupplyQty, suppliesItemsTotal, inStock, allSupplies, fullSet, selectAllSupplies,
     decorLines, setDecorLines, decorDiscount, setDecorDiscount,
-    roomsTotal, suppliesTotal, decorTotal, total: roomsTotal + suppliesTotal + decorTotal,
+    band, setBand,
+    roomsTotal, suppliesTotal, decorTotal, bandTotal, total: roomsTotal + suppliesTotal + decorTotal + bandTotal,
     any, payload, problem,
   };
 }
@@ -99,6 +104,7 @@ export default function HallAddons({ addons: a }) {
     ['rooms', BedDouble, 'Rooms', a.roomsTotal],
     ['supplies', Boxes, 'Supplies', a.suppliesTotal],
     ['decor', Flower2, 'Decoration', a.decorTotal],
+    ['band', Drum, 'Sannai Melam', a.bandTotal],
   ];
 
   return (
@@ -127,6 +133,17 @@ export default function HallAddons({ addons: a }) {
           <Field label="Decoration discount (₹)" className="mt-3 sm:max-w-56">
             <Input type="number" min="0" step="any" value={a.decorDiscount} onChange={e => a.setDecorDiscount(e.target.value)} placeholder="0" />
           </Field>
+        </Section>
+      )}
+      {a.open.band && (
+        <Section title="Sannai Melam" amount={a.bandTotal} onClose={() => toggle('band')}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Programme timing"><Input value={a.band.timing} onChange={e => a.setBand(b => ({ ...b, timing: e.target.value }))} placeholder="Baraat 6 PM" /></Field>
+            <Field label="Price (₹)"><Input type="number" min="1" value={a.band.amount} onChange={e => a.setBand(b => ({ ...b, amount: e.target.value }))} placeholder="15000" /></Field>
+            <Field label="Team name (optional)"><Input value={a.band.team} onChange={e => a.setBand(b => ({ ...b, team: e.target.value }))} placeholder="Sri Sai Sannai Melam" /></Field>
+            <Field label="Team phone (optional)"><Input type="tel" value={a.band.team_phone} onChange={e => a.setBand(b => ({ ...b, team_phone: e.target.value }))} placeholder="Team leader's mobile" /></Field>
+            <Field label="Players (optional)"><Input type="number" min="0" value={a.band.players} onChange={e => a.setBand(b => ({ ...b, players: e.target.value }))} placeholder="8" /></Field>
+          </div>
         </Section>
       )}
     </div>

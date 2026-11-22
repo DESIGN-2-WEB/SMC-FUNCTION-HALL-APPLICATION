@@ -228,6 +228,7 @@ export function buildPackageMessage(pkg, settings, type = 'booking') {
     ...(pkg.hall ? [['Hall', `${pkg.hall.hall_name} — ${inr(pkg.hall_amount || pkg.hall.rent)}`]] : []),
     ...(pkg.rooms?.length ? [['Rooms', `${pkg.rooms.map(r => r.room_name).join(', ')} — ${inr(pkg.rooms_amount)}`]] : []),
     ...(pkg.supplies?.length ? [['Supplies', `${pkg.supplies.length} item${pkg.supplies.length > 1 ? 's' : ''} — ${inr(pkg.supplies_amount)}`]] : []),
+    ...(Number(pkg.band_amount) > 0 ? [['Sannai Melam', `${(pkg.band || []).map(b => b.timing).filter(Boolean).join(', ') || 'Booked'} — ${inr(pkg.band_amount)}`]] : []),
     ...(Number(pkg.decor_amount) > 0 ? [['Decoration', `${[...new Set((pkg.decor || []).flatMap(p => (p.items || []).map(i => i.area)))].join(', ')} — ${inr(pkg.decor_amount)}`]] : []),
   ];
   const bill = [
@@ -325,7 +326,9 @@ export function buildDecorMessage(plan, settings) {
   const list = areas.map(area => {
     const rows = items.filter(it => it.area === area);
     const sub = rows.reduce((s, it) => s + (Number(it.amount) || 0), 0);
-    const lines = rows.map(it => `   - ${it.name}: ${it.qty} ${it.unit || 'pcs'} × ${inr(it.rate)} = ${inr(it.amount)}`).join('\n');
+    const lines = rows.map(it => (Number(it.qty) === 1
+      ? `   - ${it.name}: ${inr(it.amount)}`
+      : `   - ${it.name}: ${it.qty} × ${inr(it.rate)} = ${inr(it.amount)}`)).join('\n');
     return `*${area}* (${inr(sub)})\n${lines}`;
   }).join('\n\n');
   const discount = Number(plan.discount) || 0;
@@ -346,12 +349,12 @@ export function buildDecorMessage(plan, settings) {
   });
 }
 
-/** Band Melam booked for an event (a performance, not an item). */
+/** Sannai Melam booked for an event (a performance, not an item). */
 export function buildBandMessage(b, settings) {
   const status = paymentStatus({ total: Number(b.amount) || 0, paid: Number(b.paid) || 0, when: b.status === 'done' ? 'soon' : 'event' });
   const done = b.status === 'done';
   return compose(settings, {
-    name: b.customer_name, detailsTitle: 'Band Melam details',
+    name: b.customer_name, detailsTitle: 'Sannai Melam details',
     details: [
       ['Bill No', b.bill_no],
       ['Event date', fmtDate(b.event_date)],
@@ -361,15 +364,15 @@ export function buildBandMessage(b, settings) {
       ...(b.hall_name ? [['Hall', b.hall_name]] : []),
     ],
     bill: status.bill,
-    en: [done ? 'Thank you for choosing our Band Melam for your function! 🙏' : 'Your Band Melam booking is *confirmed*. 🥁', status.en],
-    te: [done ? 'మీ వేడుకకు మా బ్యాండ్ మేళాన్ని ఎంచుకున్నందుకు ధన్యవాదాలు! 🙏' : 'మీ బ్యాండ్ మేళం బుకింగ్ *నిర్ధారించబడింది*. 🥁', status.te],
+    en: [done ? 'Thank you for choosing our Sannai Melam for your function! 🙏' : 'Your Sannai Melam booking is *confirmed*. 🎺', status.en],
+    te: [done ? 'మీ వేడుకకు మా సన్నాయి మేళాన్ని ఎంచుకున్నందుకు ధన్యవాదాలు! 🙏' : 'మీ సన్నాయి మేళం బుకింగ్ *నిర్ధారించబడింది*. 🎺', status.te],
   });
 }
 
-/** Sent to the band team: when and where to perform (no money in it). */
+/** Sent to the sannai team: when and where to perform (no money in it). */
 export function buildBandTeamMessage(b, settings) {
   return compose(settings, {
-    name: b.team || 'Band team', detailsTitle: 'Programme details',
+    name: b.team || 'Sannai team', detailsTitle: 'Programme details',
     details: [
       ['Function', [b.hall_event_type, b.customer_name].filter(Boolean).join(' · ') || b.customer_name],
       ['Date', fmtDate(b.event_date)],
@@ -379,7 +382,7 @@ export function buildBandTeamMessage(b, settings) {
       ...(b.phone ? [['Customer phone', b.phone]] : []),
       ...(b.notes ? [['Notes', b.notes]] : []),
     ],
-    en: ['Here is your Band Melam programme. Please reach the venue before the programme timing. 🥁'],
-    te: ['మీ బ్యాండ్ మేళం కార్యక్రమం వివరాలు పైన ఉన్నాయి. దయచేసి కార్యక్రమ సమయానికి ముందే వేదిక వద్దకు చేరుకోండి. 🥁'],
+    en: ['Here is your Sannai Melam programme. Please reach the venue before the programme timing. 🎺'],
+    te: ['మీ సన్నాయి మేళం కార్యక్రమం వివరాలు పైన ఉన్నాయి. దయచేసి కార్యక్రమ సమయానికి ముందే వేదిక వద్దకు చేరుకోండి. 🎺'],
   });
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Ban, BedDouble, CalendarCheck, CalendarPlus, CircleCheck, IndianRupee, LogIn, LogOut, MoreHorizontal, Pencil, Printer, Smartphone, Trash2, Zap,
+  Ban, BedDouble, CalendarCheck, CalendarPlus, CircleCheck, Plus, IndianRupee, LogIn, LogOut, MoreHorizontal, Pencil, Printer, Smartphone, Trash2, Zap,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi, useRemove } from '../hooks.js';
@@ -14,6 +14,7 @@ import { DatePicker, Select } from './pickers.jsx';
 import WhatsAppModal, { WhatsAppIcon } from './WhatsAppModal.jsx';
 import PackageDetailModal from './PackageDetailModal.jsx';
 import { ExtraChargesForm } from './ExtraChargesForm.jsx';
+import AddHallExtras from './AddHallExtras.jsx';
 
 export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, onBookAnother }) {
   const { isAdmin } = useAuth();
@@ -28,6 +29,7 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
   const [comboOpen, setComboOpen] = useState(false);
   const [comboWa, setComboWa] = useState(null);
   const [stampFor, setStampFor] = useState(null); // 'checked_in' | 'checked_out' while asking the time
+  const [addingExtras, setAddingExtras] = useState(false);
 
   const run = async (fn, msg) => {
     setBusy(true);
@@ -113,23 +115,29 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
     actions.push(<Button key="out" icon={LogOut} disabled={busy} onClick={() => setStampFor('checked_out')}>Check out</Button>);
   // Hall power & generator: from the event day until the event is completed (admin any time)
   const hasExtras = Number(b.power_amount) > 0 || Number(b.generator_amount) > 0;
+  const endPending = !isRoom && Number(b.power_start) > 0 && !(Number(b.power_end) > 0);
   const eventDayReached = !isRoom && b.event_date <= today();
   const canAddExtras = !isRoom && b.status !== 'cancelled'
-    && (isAdmin || (['tentative', 'confirmed'].includes(b.status) && eventDayReached));
+    && (isAdmin || (['tentative', 'confirmed'].includes(b.status) && eventDayReached) || (b.status === 'completed' && endPending));
   if (!isRoom && b.status === 'tentative')
     actions.push(<Button key="conf" variant="success" icon={CalendarCheck} disabled={busy} onClick={() => setStatus('confirmed', 'Booking confirmed')}>Confirm</Button>);
   // Completing is possible only from the event's own date (the server checks this too)
   if (!isRoom && b.status === 'confirmed' && eventDayReached)
     actions.push(<Button key="done" icon={CircleCheck} disabled={busy}
-      onClick={() => setStatus('completed', 'Event marked completed', (balance > 0 || !hasExtras) && {
+      onClick={() => setStatus('completed', 'Event marked completed', (balance > 0 || !hasExtras || endPending) && {
         title: 'Mark this event completed?',
         message: [
-          !hasExtras && 'No power or generator bill has been added yet.',
+          endPending ? 'The end meter reading is not entered yet (you can still add it after completing).'
+            : !hasExtras && 'No power or generator bill has been added yet.',
           balance > 0 && `${inr(balance)} is still due.`,
           'Staff cannot change the bill after this.',
         ].filter(Boolean).join(' '),
         confirmText: 'Mark completed',
       })}>Mark completed</Button>);
+
+  // Rooms, supplies, decoration or Sannai Melam asked for after the hall was booked
+  if (!isRoom && ['tentative', 'confirmed'].includes(b.status))
+    actions.unshift(<Button key="extras" variant="outline" icon={Plus} disabled={busy} onClick={() => setAddingExtras(true)}>Add rooms, supplies…</Button>);
 
   // Less-used actions sit in the "More" menu so the footer stays clear
   const openStay = isRoom && (b.status === 'reserved' || b.status === 'checked_in');
@@ -176,6 +184,10 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
       }
     >
       {waOpen && <WhatsAppModal kind={kind} booking={b} onClose={() => setWaOpen(false)} />}
+      {addingExtras && (
+        <AddHallExtras hallBooking={b} onClose={() => setAddingExtras(false)}
+          onDone={async () => { setAddingExtras(false); await reload(); onChanged?.(); setComboOpen(true); }} />
+      )}
       {stampFor && (
         <StampModal
           checkIn={stampFor === 'checked_in'}
@@ -224,7 +236,7 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
             <span className="text-xs font-semibold uppercase tracking-wider text-stone-600">Bill Breakdown</span>
             {canAddExtras && !chargesOpen ? (
               <Button size="sm" variant="outline" icon={Zap} onClick={() => setChargesOpen(true)}>
-                {hasExtras ? 'Change power & generator' : 'Add power & generator'}
+                {endPending ? 'Add end reading' : hasExtras ? 'Change power & generator' : 'Add power & generator'}
               </Button>
             ) : !chargesOpen && (
               <span className="text-xs font-medium text-stone-500">
@@ -255,6 +267,7 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
               <p className="text-[11px] text-stone-500">
                 {b.power_units ? `${b.power_units} units @ ₹${b.power_rate || 15}` : '0 units'}
                 {b.power_end > b.power_start && <span className="block text-[10px] text-stone-400">({b.power_start} → {b.power_end})</span>}
+                {endPending && <span className="block text-[10px] font-semibold text-amber-700">Start {b.power_start} · end reading pending</span>}
               </p>
             </div>
             <div className="rounded-xl bg-white p-2.5 border border-stone-200">

@@ -16,7 +16,7 @@ r.get('/', (req, res) => {
   res.json(all(
     `SELECT p.*, u.name AS created_by_name,
             COALESCE(rb.guest_name, hb.customer_name, bb.customer_name) AS party,
-            COALESCE(rm.name, h.name, CASE WHEN bb.id IS NOT NULL THEN 'Band Melam' END) AS unit
+            COALESCE(rm.name, h.name, CASE WHEN bb.id IS NOT NULL THEN 'Sannai Melam' END) AS unit
      FROM payments p
      LEFT JOIN users u ON u.id = p.created_by
      LEFT JOIN room_bookings rb ON p.kind = 'room' AND rb.id = p.booking_id

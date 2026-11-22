@@ -4,7 +4,7 @@ import { fail, found, inr, isDate, num, str } from '../lib/http.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { setBillNo } from '../lib/billno.js';
 import { getDBSettings } from './settings.js';
-import { COMBO_COLUMNS, COMBO_JOINS, syncComboPaid } from '../lib/combo.js';
+import { COMBO_COLUMNS, COMBO_JOINS, safeNote, syncComboPaid } from '../lib/combo.js';
 
 /*
  * Room bookings and hall bookings share one flow (list, view, create, edit,
@@ -342,7 +342,7 @@ function bookingRouter(kind) {
     const amount = num(req.body.amount);
     if (amount <= 0) fail('Enter an amount greater than zero');
     const paidOn = isDate(req.body.paid_on) ? req.body.paid_on : today();
-    tx(() => addPayment(kind, b.id, amount, str(req.body.method), str(req.body.note), paidOn, req.user.id));
+    tx(() => addPayment(kind, b.id, amount, str(req.body.method), safeNote(str(req.body.note)), paidOn, req.user.id));
     log(req.user.id, 'payment received', `${inr(amount)} (${str(req.body.method) || 'Cash'}) · ${K.label(b)}`);
     res.status(201).json(load(b.id));
   });
@@ -355,22 +355,31 @@ function bookingRouter(kind) {
     const b = load(req.params.id);
     const isAdmin = req.user.role === 'admin';
     if (b.status === 'cancelled') fail('This booking is cancelled');
-    if (b.status === 'completed' && !isAdmin) fail('This event is already completed. Ask the admin to change its bill', 403);
+    // The end reading may be taken after the function is over, even once it is marked completed
+    const endPending = Number(b.power_start) > 0 && !(Number(b.power_end) > 0);
+    if (b.status === 'completed' && !isAdmin && !endPending) fail('This event is already completed. Ask the admin to change its bill', 403);
     if (!isAdmin && b.event_date > today()) fail(`Power and generator can be added from the event day (${b.event_date})`);
     const settings = getDBSettings();
-    const power_start = Math.max(0, num(req.body.power_start));
+    // Staff filling in a missing end reading after completion can add only that reading: the
+    // start reading and the generator stay as stored
+    const lockedForStaff = b.status === 'completed' && !isAdmin;
+    const power_start = lockedForStaff ? Number(b.power_start) : Math.max(0, num(req.body.power_start));
     const power_end = Math.max(0, num(req.body.power_end));
-    const power_units = power_end > power_start ? power_end - power_start : Math.max(0, num(req.body.power_units));
+    if (lockedForStaff && !(power_end > 0)) fail('Enter the end reading');
+    if (power_end > 0 && power_end < power_start) fail(`End reading (${power_end}) cannot be less than the start reading (${power_start})`);
+    // From the readings when both are there; with only a start reading nothing is charged yet;
+    // with no readings at all, units typed in directly
+    const power_units = power_end > 0 ? power_end - power_start : power_start > 0 ? 0 : Math.max(0, num(req.body.power_units));
     const power_rate = Number(b.power_rate) || Number(settings.power_rate) || 15;
     const power_amount = Math.round(power_units * power_rate);
-    const generator_type = str(req.body.generator_type);
+    const generator_type = lockedForStaff ? b.generator_type || '' : str(req.body.generator_type);
     let generators = [];
     try { generators = JSON.parse(settings.generators || '[]'); } catch { generators = []; }
     const listed = generator_type && Array.isArray(generators) ? generators.find(g => g.name === generator_type) : null;
     if (generator_type && !listed && generator_type !== b.generator_type) fail('Choose a generator from the list');
-    const generator_rate = !generator_type ? 0 : listed ? Number(listed.rate) || 0 : Number(b.generator_rate) || 0;
-    const generator_hours = generator_type ? Math.max(0, num(req.body.generator_hours)) : 0;
-    const generator_amount = Math.round(generator_hours * generator_rate);
+    const generator_rate = lockedForStaff ? Number(b.generator_rate) || 0 : !generator_type ? 0 : listed ? Number(listed.rate) || 0 : Number(b.generator_rate) || 0;
+    const generator_hours = lockedForStaff ? Number(b.generator_hours) || 0 : generator_type ? Math.max(0, num(req.body.generator_hours)) : 0;
+    const generator_amount = lockedForStaff ? Number(b.generator_amount) || 0 : Math.round(generator_hours * generator_rate);
     const base = (Number(b.total) || 0) - (Number(b.power_amount) || 0) - (Number(b.generator_amount) || 0);
     const total = Math.max(0, base + power_amount + generator_amount);
     run(`UPDATE hall_bookings SET power_start = ?, power_end = ?, power_units = ?, power_rate = ?, power_amount = ?,

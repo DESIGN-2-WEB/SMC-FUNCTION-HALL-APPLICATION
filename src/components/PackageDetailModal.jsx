@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BedDouble, Boxes, CreditCard, Flower2, Landmark, Pencil, Printer, Trash2, Zap } from 'lucide-react';
+import { BedDouble, Boxes, CreditCard, Drum, Flower2, Landmark, Pencil, Plus, Printer, Trash2, Zap } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import { Badge, Button, Card, Field, Form, Input, Modal, cn, useUI } from './ui.jsx';
@@ -7,6 +7,7 @@ import { esc, fmtDate, fmtDateTime, inr, nights, slotName, today } from '../util
 import { useSettings } from '../settings.jsx';
 import { useAuth } from '../auth.jsx';
 import { ExtraChargesForm } from './ExtraChargesForm.jsx';
+import AddHallExtras from './AddHallExtras.jsx';
 import { Select } from './pickers.jsx';
 import { WhatsAppIcon } from './WhatsAppModal.jsx';
 
@@ -16,6 +17,7 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
   const { isAdmin } = useAuth();
   const { data: pkg, reload } = useApi(`/packages/${packageId}`);
   const [chargesOpen, setChargesOpen] = useState(false);
+  const [addingExtras, setAddingExtras] = useState(false);
   const [roomEdit, setRoomEdit] = useState(null); // { id, rate } while the admin changes a room's price
 
   // Payment State
@@ -36,8 +38,9 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
   // open, admin any time (same rule as the hall booking itself)
   const hall = pkg.hall;
   const hasExtras = hall && (Number(hall.power_amount) > 0 || Number(hall.generator_amount) > 0);
+  const endPending = hall && Number(hall.power_start) > 0 && !(Number(hall.power_end) > 0);
   const canAddExtras = hall && !isCancelled && hall.status !== 'cancelled'
-    && (isAdmin || (['tentative', 'confirmed'].includes(hall.status) && hall.event_date <= today()));
+    && (isAdmin || (['tentative', 'confirmed'].includes(hall.status) && hall.event_date <= today()) || (hall.status === 'completed' && endPending));
 
   const handlePayment = async e => {
     e?.preventDefault?.();
@@ -159,6 +162,9 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
               >
                 WhatsApp Voucher
               </Button>
+              {pkg.hall && !isCancelled && ['tentative', 'confirmed'].includes(pkg.hall.status) && (
+                <Button variant="outline" icon={Plus} onClick={() => setAddingExtras(true)}>Add more</Button>
+              )}
               {balance > 0 && !isCancelled && (
                 <Button variant="gold" icon={CreditCard} onClick={() => setPayModal(true)}>
                   Take Payment ({inr(balance)})
@@ -257,10 +263,13 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
                 />
               ) : canAddExtras ? (
                 <Button size="sm" variant="outline" icon={Zap} onClick={() => setChargesOpen(true)}>
-                  {hasExtras ? 'Change power & generator bill' : 'Add power & generator bill'}
+                  {endPending ? 'Add end reading' : hasExtras ? 'Change power & generator bill' : 'Add power & generator bill'}
                 </Button>
               ) : !isCancelled && hall.status !== 'completed' && (
                 <p className="text-xs text-stone-500">Power & generator bill can be added from {fmtDate(hall.event_date)}.</p>
+              )}
+              {endPending && (
+                <p className="text-xs font-semibold text-amber-700">Meter start reading {pkg.hall.power_start} saved · end reading pending</p>
               )}
               {Number(pkg.hall.power_amount) > 0 && (
                 <div className="flex items-center justify-between text-xs text-stone-600">
@@ -362,6 +371,31 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
                   <span className="font-semibold">− {inr(pkg.supplies.reduce((t, s) => t + (Number(s.discount) || 0), 0))}</span>
                 </div>
               )}
+            </div>
+          )}
+
+          {addingExtras && (
+            <AddHallExtras hallBooking={pkg.hall} onClose={() => setAddingExtras(false)}
+              onDone={() => { setAddingExtras(false); reload(); onRefresh?.(); }} />
+          )}
+
+          {/* Section: Sannai Melam (a performance on this bill) */}
+          {pkg.band?.length > 0 && (
+            <div className="rounded-xl border border-stone-200 bg-white p-4 space-y-1.5">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-stone-600">
+                  <Drum size={15} className="text-gold-700" />
+                  <span>Sannai Melam</span>
+                </div>
+                <span className="font-bold text-xs text-ink-900">{inr(pkg.band_amount)}</span>
+              </div>
+              {pkg.band.map(b => (
+                <div key={b.id} className="flex items-center justify-between text-xs">
+                  <span className="text-stone-600">{[b.timing, b.team, Number(b.players) ? `${b.players} players` : ''].filter(Boolean).join(' · ') || 'Sannai Melam'}</span>
+                  <span className="font-semibold text-ink-900">{inr(b.amount)}</span>
+                </div>
+              ))}
+              <p className="text-[11px] text-stone-400">Send the timing to the team from the Sannai Melam page.</p>
             </div>
           )}
 
@@ -517,8 +551,9 @@ export function printComboBill(pkg, settings) {
   }
   const suppliesDiscount = (pkg.supplies || []).reduce((t, s) => t + (Number(s.discount) || 0), 0);
   if (suppliesDiscount > 0) lines.push(['Supplies discount', 'Full set price', '', '', -suppliesDiscount]);
+  for (const b of pkg.band || []) lines.push(['Sannai Melam', [b.timing, b.team].filter(Boolean).join(' · '), '', '', Number(b.amount) || 0]);
   for (const plan of pkg.decor || []) {
-    for (const i of plan.items || []) lines.push([i.name, `Decoration · ${i.area}`, `${i.qty} ${i.unit || 'pcs'}`, inr(i.rate), Number(i.amount) || 0]);
+    for (const i of plan.items || []) lines.push([i.name, `Decoration · ${i.area}`, Number(i.qty) === 1 ? '' : `× ${i.qty}`, inr(i.rate), Number(i.amount) || 0]);
     if (Number(plan.discount) > 0) lines.push(['Decoration discount', '', '', '', -Number(plan.discount)]);
   }
 

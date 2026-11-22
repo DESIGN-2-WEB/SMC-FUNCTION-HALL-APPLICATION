@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Zap } from 'lucide-react';
 import { api } from '../api.js';
 import { useSettings } from '../settings.jsx';
+import { useAuth } from '../auth.jsx';
 import { inr } from '../utils.js';
 import { Button, Field, Form, Input, useUI } from './ui.jsx';
 import { Select } from './pickers.jsx';
@@ -14,6 +15,8 @@ import { Select } from './pickers.jsx';
 export function ExtraChargesForm({ booking: b, billTotal = b.total, billPaid = b.paid, onCancel, onDone }) {
   const { settings } = useSettings();
   const { toast } = useUI();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const powerRate = Number(b.power_rate) || Number(settings.power_rate) || 15;
   let generators = [];
   try {
@@ -32,7 +35,7 @@ export function ExtraChargesForm({ booking: b, billTotal = b.total, billPaid = b
     if (k === 'power_start' || k === 'power_end') {
       const start = Number(next.power_start) || 0;
       const end = Number(next.power_end) || 0;
-      next.power_units = next.power_end !== '' && end >= start ? end - start : '';
+      next.power_units = next.power_end !== '' && end >= start ? end - start : start > 0 ? '' : prev.power_units;
     }
     return next;
   });
@@ -60,7 +63,10 @@ export function ExtraChargesForm({ booking: b, billTotal = b.total, billPaid = b
           generator_hours: f.generator_type ? Number(f.generator_hours) || 0 : 0,
         },
       });
-      toast(`Power & generator saved · bill now ${inr(newTotal)}`);
+      const startOnly = Number(f.power_start) > 0 && !(Number(f.power_end) > 0);
+      toast(startOnly
+        ? `Start reading ${f.power_start} saved. Add the end reading after the function.`
+        : `Power & generator saved · bill now ${inr(newTotal)}`);
       await onDone();
     } catch (e) {
       toast(e.message, 'error');
@@ -74,13 +80,16 @@ export function ExtraChargesForm({ booking: b, billTotal = b.total, billPaid = b
         <p className="mb-2 text-xs font-semibold tracking-wider text-stone-500 uppercase">Power bill · {inr(powerRate)}/unit</p>
         <div className="grid grid-cols-3 gap-3">
           <Field label="Start reading">
-            <Input type="number" min="0" step="any" placeholder="0" value={f.power_start} onChange={e => set('power_start', e.target.value)} />
+            <Input type="number" min="0" step="any" placeholder="At the start" value={f.power_start} onChange={e => set('power_start', e.target.value)}
+              disabled={b.status === 'completed' && Number(b.power_start) > 0 && !(Number(b.power_end) > 0) && !isAdmin} />
           </Field>
           <Field label="End reading">
-            <Input type="number" min="0" step="any" placeholder="0" value={f.power_end} onChange={e => set('power_end', e.target.value)} />
+            <Input type="number" min="0" step="any" placeholder="After the function" value={f.power_end} onChange={e => set('power_end', e.target.value)}
+              autoFocus={Number(b.power_start) > 0 && !(Number(b.power_end) > 0)} />
           </Field>
           <Field label="Units used">
-            <Input type="number" min="0" step="any" placeholder="0" value={f.power_units} onChange={e => set('power_units', e.target.value)} />
+            <Input type="number" min="0" step="any" placeholder={Number(f.power_start) > 0 ? 'after end' : '0'} disabled={Number(f.power_start) > 0}
+              value={f.power_units} onChange={e => set('power_units', e.target.value)} />
           </Field>
         </div>
       </div>

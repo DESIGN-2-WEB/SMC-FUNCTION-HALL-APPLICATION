@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react';
-import { Ban, CheckCircle2, Flower2, ListChecks, Pencil, Plus, Printer, RotateCcw, Tags, Trash2, X } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { Ban, Camera, CheckCircle2, Flower2, ImagePlus, ListChecks, Pencil, Plus, Printer, RotateCcw, Tags, Trash2, X } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi, useRemove } from '../hooks.js';
 import { Badge, Button, Card, EmptyState, Field, Form, Input, Modal, Segmented, Textarea, cn, useUI } from './ui.jsx';
 import { Combobox, DatePicker, Select } from './pickers.jsx';
 import { esc, fmtDate, inr, today } from '../utils.js';
 import WhatsAppModal, { WhatsAppIcon } from './WhatsAppModal.jsx';
+import { makePhoto } from '../imageResize.js';
 
 /*
  * Decorations page (its own menu item): plan and price the decoration of each area of the hall
@@ -183,12 +184,21 @@ export function DecorLinesEditor({ areas, priceItems, lines, setLines }) {
       setLines(ls => ls.filter(l => l.area !== area));
     } else {
       setOpen(o => [...o, area]);
-      // Start with the area's first price-list item, or an empty row
-      setLines(ls => [...ls, newLine(area, byArea(area)[0])]);
+      // With designs in the price list, the user picks from their photos; otherwise an empty row
+      if (!byArea(area).length) setLines(ls => [...ls, newLine(area)]);
     }
   };
 
   const updateLine = (key, patch) => setLines(ls => ls.map(l => (l.key === key ? { ...l, ...patch } : l)));
+  // A design is a type (Stage type 1, type 2...), taken once: tapping it adds it, tapping again takes it out
+  const isAdded = (area, item) => lines.some(l => l.area === area && l.name.toLowerCase() === item.name.toLowerCase());
+  const addDesign = (area, item) => setLines(ls => (
+    ls.some(l => l.area === area && l.name.toLowerCase() === item.name.toLowerCase())
+      ? ls.filter(l => !(l.area === area && l.name.toLowerCase() === item.name.toLowerCase()))
+      : [...ls, newLine(area, item)]
+  ));
+  const [viewing, setViewing] = useState(null); // price-list item whose large photo is open
+  const thumbOf = (area, name) => byArea(area).find(i => i.name.toLowerCase() === String(name).toLowerCase() && i.thumb);
   const pickName = (l, name) => {
     const item = byArea(l.area).find(i => i.name.toLowerCase() === name.toLowerCase());
     updateLine(l.key, item ? { name: item.name, unit: item.unit, rate: n(item.price) } : { name });
@@ -229,26 +239,52 @@ export function DecorLinesEditor({ areas, priceItems, lines, setLines }) {
               <span className="text-sm font-semibold text-ink-900">{inr(sub)}</span>
             </div>
             <div className="space-y-2 p-3">
+              {/* The designs of this area from the price list: photo, name and price. Tap to add. */}
+              {byArea(area).length > 0 && (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,8.5rem),1fr))] gap-2 pb-2">
+                  {byArea(area).map(item => (
+                    <div key={item.id} className={cn('overflow-hidden rounded-xl border bg-white', isAdded(area, item) ? 'border-ink-900 ring-1 ring-ink-900' : 'border-stone-200')}>
+                      <button type="button" onClick={() => (item.has_photo ? setViewing(item) : addDesign(area, item))}
+                        className="block aspect-[4/3] w-full cursor-pointer bg-stone-100" aria-label={item.has_photo ? `See photo of ${item.name}` : `Add ${item.name}`}>
+                        {item.thumb
+                          ? <img src={item.thumb} alt={item.name} className="h-full w-full object-cover" />
+                          : <span className="grid h-full place-items-center text-stone-300"><Flower2 size={22} /></span>}
+                      </button>
+                      <div className="p-2">
+                        <p className="truncate text-xs font-semibold text-ink-900" title={item.name}>{item.name}</p>
+                        <div className="mt-1 flex items-center justify-between gap-1">
+                          <span className="text-xs text-stone-600">{inr(item.price)}</span>
+                          <button type="button" onClick={() => addDesign(area, item)} aria-pressed={isAdded(area, item)}
+                            className={cn('cursor-pointer rounded-lg px-2 py-0.5 text-[11px] font-semibold',
+                              isAdded(area, item) ? 'bg-ink-900 text-white' : 'bg-gold-100 text-gold-900 hover:bg-gold-200')}>
+                            {isAdded(area, item) ? '✓ Added' : '+ Add'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               {rows.map(l => (
-                <div key={l.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_5rem_7rem_6rem_auto]">
-                  <div className="min-w-0">
-                    <Combobox value={l.name} onChange={v => pickName(l, v)} options={names} placeholder="Item, e.g. Flower backdrop" />
-                  </div>
-                  <div className="col-span-2 row-start-2 grid grid-cols-3 gap-2 sm:contents">
-                    <label className="block">
-                      <span className="text-[11px] text-stone-400 sm:hidden">Qty</span>
-                      <Input type="number" min="0" step="any" value={l.qty} onChange={e => updateLine(l.key, { qty: e.target.value })} aria-label="Quantity" />
-                    </label>
-                    <label className="block">
-                      <span className="text-[11px] text-stone-400 sm:hidden">Rate (₹)</span>
-                      <Input type="number" min="0" step="any" value={l.rate} onChange={e => updateLine(l.key, { rate: e.target.value })} aria-label="Rate" />
-                    </label>
-                    <div className="flex h-10 items-center justify-end text-sm font-medium text-ink-900 tabular-nums">
-                      {inr(decorLineAmount(l))}
+                <div key={l.key} className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    {thumbOf(area, l.name) && (
+                      <button type="button" onClick={() => setViewing(thumbOf(area, l.name))} className="h-10 w-10 shrink-0 cursor-pointer overflow-hidden rounded-lg"
+                        aria-label={`See photo of ${l.name}`}>
+                        <img src={thumbOf(area, l.name).thumb} alt="" className="h-full w-full object-cover" />
+                      </button>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <Combobox value={l.name} onChange={v => pickName(l, v)} options={names} placeholder="Type, e.g. Stage type 1" />
+                      {n(l.qty) !== 1 && <p className="mt-0.5 text-[11px] text-stone-400">× {l.qty} (from an older plan)</p>}
                     </div>
                   </div>
+                  <label className="block">
+                    <span className="sr-only">Price</span>
+                    <Input type="number" min="0" step="any" value={l.rate} onChange={e => updateLine(l.key, { rate: e.target.value })} aria-label="Price" placeholder="₹ price" />
+                  </label>
                   <button type="button" onClick={() => setLines(ls => ls.filter(x => x.key !== l.key))}
-                    className="col-start-2 row-start-1 grid h-10 w-9 cursor-pointer place-items-center rounded-lg text-stone-400 hover:bg-rose-50 hover:text-rose-600 sm:col-start-5"
+                    className="grid h-10 w-9 cursor-pointer place-items-center rounded-lg text-stone-400 hover:bg-rose-50 hover:text-rose-600"
                     aria-label="Remove item" title="Remove item">
                     <X size={16} />
                   </button>
@@ -256,12 +292,55 @@ export function DecorLinesEditor({ areas, priceItems, lines, setLines }) {
               ))}
               <button type="button" onClick={() => setLines(ls => [...ls, newLine(area)])}
                 className="cursor-pointer text-xs font-medium text-gold-700 hover:text-gold-900 hover:underline">
-                + Add item to {area}
+                + Add another {area.toLowerCase()} type by name
               </button>
             </div>
           </div>
         );
       })}
+      {viewing && <DecorPhotoViewer item={viewing} onClose={() => setViewing(null)} />}
+    </div>
+  );
+}
+
+/** The large photo of a price-list design, fetched when opened. */
+export function DecorPhotoViewer({ item, onClose }) {
+  const big = useApi(`/decorations/items/${item.id}/photo`);
+  return (
+    <Modal size="lg" onClose={onClose} title={item.name} subtitle={`${item.area} · ${inr(item.price)}`}
+      footer={<Button variant="outline" onClick={onClose}>Close</Button>}>
+      {big.data?.photo
+        ? <img src={big.data.photo} alt={item.name} className="mx-auto max-h-[65vh] w-auto rounded-xl" />
+        : <img src={item.thumb} alt={item.name} className="mx-auto max-h-[65vh] w-auto rounded-xl opacity-80" />}
+    </Modal>
+  );
+}
+
+/** Square photo slot: shows the picture, picks a new one, and can remove it. */
+function PhotoSlot({ thumb, onPick, onRemove, onView, busy }) {
+  const input = useRef(null);
+  return (
+    <div className="relative h-16 w-16 shrink-0">
+      <button type="button" disabled={busy} onClick={() => (thumb && onView ? onView() : input.current?.click())}
+        className="grid h-full w-full cursor-pointer place-items-center overflow-hidden rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-400 hover:border-gold-400 hover:text-gold-700"
+        aria-label={thumb ? 'See photo' : 'Add photo'} title={thumb ? 'See photo' : 'Add photo'}>
+        {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" />
+          : <span className="flex flex-col items-center text-[10px] font-medium"><ImagePlus size={18} />Photo</span>}
+      </button>
+      {thumb && (
+        <>
+          <button type="button" onClick={() => input.current?.click()} disabled={busy}
+            className="absolute -bottom-1 -left-1 grid h-6 w-6 cursor-pointer place-items-center rounded-full bg-white text-stone-600 shadow ring-1 ring-stone-200 hover:text-gold-700"
+            aria-label="Change photo" title="Change photo"><Camera size={12} /></button>
+          {onRemove && (
+            <button type="button" onClick={onRemove} disabled={busy}
+              className="absolute -top-1 -right-1 grid h-6 w-6 cursor-pointer place-items-center rounded-full bg-white text-stone-500 shadow ring-1 ring-stone-200 hover:text-rose-600"
+              aria-label="Remove photo" title="Remove photo"><X size={12} /></button>
+          )}
+        </>
+      )}
+      <input ref={input} type="file" accept="image/*" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onPick(f); }} />
     </div>
   );
 }
@@ -297,11 +376,11 @@ function PlanModal({ plan, areas, priceItems, hallBookings, onClose, onSaved }) 
     if (!items.length) return toast('Add at least one decoration item', 'error');
     setSaving(true);
     try {
-      await api(editing ? `/decorations/plans/${plan.id}` : '/decorations/plans', {
+      const saved = await api(editing ? `/decorations/plans/${plan.id}` : '/decorations/plans', {
         method: editing ? 'PUT' : 'POST',
         body: { ...f, hall_booking_id: f.hall_booking_id || null, discount: n(f.discount), items },
       });
-      toast(editing ? 'Decoration plan updated' : 'Decoration planned');
+      toast(saved.combo_bill_no ? `${editing ? 'Updated' : 'Planned'} · on the hall's combined bill ${saved.combo_bill_no}` : editing ? 'Decoration plan updated' : 'Decoration planned');
       onSaved();
     } catch (err) {
       toast(err.message, 'error');
@@ -317,7 +396,7 @@ function PlanModal({ plan, areas, priceItems, hallBookings, onClose, onSaved }) 
   return (
     <Modal size="lg" onClose={onClose}
       title={editing ? 'Edit decoration plan' : 'Plan decoration'}
-      subtitle="Pick the areas, then the items and quantities. Rates come from your price list and can be changed here."
+      subtitle="Pick the areas, then a type for each. Prices come from your price list and can be changed here."
       footer={(
         <div className="flex w-full flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-stone-500">Total <span className="font-display text-lg font-semibold text-ink-900">{inr(total)}</span></p>
@@ -366,9 +445,31 @@ function PlanModal({ plan, areas, priceItems, hallBookings, onClose, onSaved }) 
 function PriceListModal({ areas, items, onChanged, reloadSettings, onClose }) {
   const { toast, confirm } = useUI();
   const [newArea, setNewArea] = useState('');
-  const [drafts, setDrafts] = useState({}); // area -> { name, unit, price }
+  const [drafts, setDrafts] = useState({}); // area -> { name, unit, price, photo, thumb }
   const [edits, setEdits] = useState({}); // id -> { name, unit, price }
   const [busy, setBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(null); // item id (or 'new:area') while a photo is saved
+  const [viewing, setViewing] = useState(null);
+
+  // A photo saves straight away for an item already in the list
+  const savePhoto = async (item, file) => {
+    setPhotoBusy(item.id);
+    try {
+      const pic = file ? await makePhoto(file) : { photo: '', thumb: '' };
+      await api(`/decorations/items/${item.id}`, { method: 'PUT', body: { area: item.area, name: item.name, unit: item.unit, price: n(item.price), ...pic } });
+      toast(file ? 'Photo saved' : 'Photo removed');
+      onChanged();
+    } catch (err) { toast(err.message, 'error'); }
+    setPhotoBusy(null);
+  };
+  const draftPhoto = async (area, file) => {
+    setPhotoBusy(`new:${area}`);
+    try {
+      const pic = await makePhoto(file);
+      setDrafts(p => ({ ...p, [area]: { ...(p[area] || {}), ...pic } }));
+    } catch (err) { toast(err.message, 'error'); }
+    setPhotoBusy(null);
+  };
 
   const saveAreas = async list => {
     await api('/settings', { method: 'PUT', body: { decor_areas: list.join(', ') } });
@@ -395,7 +496,7 @@ function PriceListModal({ areas, items, onChanged, reloadSettings, onClose }) {
     const d = drafts[area] || {};
     if (!d.name?.trim()) return toast('Type the item name first', 'error');
     try {
-      await api('/decorations/items', { method: 'POST', body: { area, name: d.name, unit: d.unit || 'pcs', price: n(d.price) } });
+      await api('/decorations/items', { method: 'POST', body: { area, name: d.name, unit: d.unit || 'pcs', price: n(d.price), ...(d.photo ? { photo: d.photo, thumb: d.thumb } : {}) } });
       setDrafts(p => ({ ...p, [area]: {} }));
       onChanged();
     } catch (err) { toast(err.message, 'error'); }
@@ -420,8 +521,9 @@ function PriceListModal({ areas, items, onChanged, reloadSettings, onClose }) {
 
   return (
     <Modal size="lg" onClose={onClose} title="Decoration price list"
-      subtitle="The price you charge for each item. Plans start with these rates."
+      subtitle="Each type with its photo, name and the price you charge, e.g. Stage type 1. Plans start with these."
       footer={<Button variant="outline" onClick={onClose}>Close</Button>}>
+      {viewing && <DecorPhotoViewer item={viewing} onClose={() => setViewing(null)} />}
       <div className="space-y-5">
         <div className="rounded-xl border border-gold-200 bg-gold-50/50 p-3.5">
           <span className="label">Add an area</span>
@@ -451,10 +553,13 @@ function PriceListModal({ areas, items, onChanged, reloadSettings, onClose }) {
                   const val = e || { name: item.name, unit: item.unit, price: item.price };
                   const change = (k, v) => setEdits(p => ({ ...p, [item.id]: { ...val, [k]: v } }));
                   return (
-                    <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_4.5rem_6.5rem_auto] items-center gap-2">
-                      <Input value={val.name} onChange={ev => change('name', ev.target.value)} aria-label="Item name" />
-                      <Input value={val.unit} onChange={ev => change('unit', ev.target.value)} aria-label="Unit" />
-                      <Input type="number" min="0" step="any" value={val.price} onChange={ev => change('price', ev.target.value)} aria-label="Price" />
+                    <div key={item.id} className="flex items-start gap-2">
+                      <PhotoSlot thumb={item.thumb} busy={photoBusy === item.id} onPick={f => savePhoto(item, f)}
+                        onRemove={item.thumb ? () => savePhoto(item, null) : null} onView={() => setViewing(item)} />
+                      <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
+                        <Input className="col-span-2 sm:col-span-1" value={val.name} onChange={ev => change('name', ev.target.value)} aria-label="Type name" />
+                        <Input className="col-span-2 sm:col-span-1" type="number" min="0" step="any" value={val.price} onChange={ev => change('price', ev.target.value)} aria-label="Price" placeholder="₹ price" />
+                      </div>
                       {e ? (
                         <Button size="sm" variant="gold" onClick={() => saveItem(item)}>Save</Button>
                       ) : (
@@ -465,11 +570,14 @@ function PriceListModal({ areas, items, onChanged, reloadSettings, onClose }) {
                     </div>
                   );
                 })}
-                <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_6.5rem_auto] items-center gap-2 border-t border-dashed border-stone-200 pt-2">
-                  <Input value={d.name || ''} onChange={ev => setD('name', ev.target.value)} placeholder="New item" aria-label="New item name"
-                    onKeyDown={ev => { if (ev.key === 'Enter') { ev.preventDefault(); addItem(area); } }} />
-                  <Input value={d.unit || ''} onChange={ev => setD('unit', ev.target.value)} placeholder="pcs" aria-label="New item unit" />
-                  <Input type="number" min="0" step="any" value={d.price || ''} onChange={ev => setD('price', ev.target.value)} placeholder="₹ price" aria-label="New item price" />
+                <div className="flex items-start gap-2 border-t border-dashed border-stone-200 pt-2">
+                  <PhotoSlot thumb={d.thumb} busy={photoBusy === `new:${area}`} onPick={f => draftPhoto(area, f)}
+                    onRemove={d.thumb ? () => setDrafts(p => ({ ...p, [area]: { ...(p[area] || {}), photo: '', thumb: '' } })) : null} />
+                  <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
+                    <Input className="col-span-2 sm:col-span-1" value={d.name || ''} onChange={ev => setD('name', ev.target.value)} placeholder={`New type, e.g. ${area} type 1`} aria-label="New type name"
+                      onKeyDown={ev => { if (ev.key === 'Enter') { ev.preventDefault(); addItem(area); } }} />
+                    <Input className="col-span-2 sm:col-span-1" type="number" min="0" step="any" value={d.price || ''} onChange={ev => setD('price', ev.target.value)} placeholder="₹ price" aria-label="New type price" />
+                  </div>
                   <Button size="sm" variant="outline" icon={Plus} onClick={() => addItem(area)} aria-label={`Add item to ${area}`} />
                 </div>
               </div>
@@ -494,7 +602,7 @@ export function printDecorPlan(plan, settings) {
     const rows = items.filter(i => i.area === area);
     const sub = rows.reduce((s, i) => s + n(i.amount), 0);
     return `<tr class="area"><td colspan="3">${esc(area)}</td><td class="r">${esc(inr(sub))}</td></tr>` +
-      rows.map(i => `<tr><td>${esc(i.name)}</td><td class="c">${esc(`${i.qty} ${i.unit || 'pcs'}`)}</td><td class="r">${esc(inr(i.rate))}</td><td class="r">${esc(inr(i.amount))}</td></tr>`).join('');
+      rows.map(i => `<tr><td>${esc(i.name)}</td><td class="c">${n(i.qty) !== 1 ? esc(`× ${i.qty}`) : ''}</td><td class="r">${esc(inr(i.rate))}</td><td class="r">${esc(inr(i.amount))}</td></tr>`).join('');
   }).join('');
 
   const w = window.open('', '_blank', 'width=800,height=900');

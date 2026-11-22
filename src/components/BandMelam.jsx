@@ -8,7 +8,7 @@ import { METHODS, fmtDate, inr, today } from '../utils.js';
 import WhatsAppModal, { WhatsAppIcon } from './WhatsAppModal.jsx';
 
 /*
- * Band Melam tab on the Supplies page: a performance booked for an event. It is booked like a
+ * Sannai Melam page (its own menu item): a performance booked for an event. It is booked like a
  * supply, but it is not an item, so there is no stock: just the date, timing, team and price.
  */
 
@@ -29,10 +29,10 @@ export default function BandMelamTab({ isAdmin, hallBookings }) {
 
   const rows = list.data || [];
   const shown = filter === 'booked' ? rows.filter(b => b.status === 'booked') : rows;
-  const due = rows.filter(b => b.status !== 'cancelled').reduce((s, b) => s + Math.max(0, b.amount - b.paid), 0);
+  const due = rows.filter(b => b.status !== 'cancelled' && !b.package_id).reduce((s, b) => s + Math.max(0, b.amount - b.paid), 0);
 
   const setStatus = async (b, status) => {
-    const ask = { done: 'Mark this performance as done?', cancelled: 'Cancel this Band Melam booking?', booked: 'Reopen this booking?' };
+    const ask = { done: 'Mark this performance as done?', cancelled: 'Cancel this Sannai Melam booking?', booked: 'Reopen this booking?' };
     if (!(await confirm({ title: ask[status], message: `${b.customer_name} · ${fmtDate(b.event_date)}`, danger: status === 'cancelled', confirmText: 'Yes' }))) return;
     try {
       await api(`/band/${b.id}/status`, { method: 'PATCH', body: { status } });
@@ -48,14 +48,14 @@ export default function BandMelamTab({ isAdmin, hallBookings }) {
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 p-4">
           <div className="min-w-0">
-            <h3 className="font-semibold text-ink-900">Band Melam</h3>
+            <h3 className="font-semibold text-ink-900">Sannai Melam</h3>
             <p className="text-xs text-stone-500">
               A performance for the event, not a stock item · {rows.filter(b => b.status === 'booked').length} booked · {inr(due)} due
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Segmented value={filter} onChange={setFilter} options={[{ value: 'booked', label: 'Booked' }, { value: 'all', label: 'All' }]} />
-            <Button variant="gold" icon={Plus} onClick={() => setEditing({})}>Book Band Melam</Button>
+            <Button variant="gold" icon={Plus} onClick={() => setEditing({})}>Book Sannai Melam</Button>
           </div>
         </div>
 
@@ -76,14 +76,17 @@ export default function BandMelamTab({ isAdmin, hallBookings }) {
                     <p className="mt-0.5 text-xs text-stone-500">
                       {fmtDate(b.event_date)}{b.timing ? ` · ${b.timing}` : ''}{b.team ? ` · ${b.team}` : ''}{b.team_phone ? ` (${b.team_phone})` : ''}
                       {Number(b.players) ? ` · ${b.players} players` : ''}{b.hall_name ? ` · ${b.hall_name}` : ''} · Bill {b.bill_no || '—'}
+                      {b.combo_bill_no && <> · <b className="text-gold-800">on combined bill {b.combo_bill_no}</b></>}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="font-display text-lg font-semibold text-ink-900">{inr(b.amount)}</p>
-                    <p className={balance > 0 ? 'text-[11px] text-rose-600' : 'text-[11px] text-emerald-600'}>{balance > 0 ? `${inr(balance)} due` : 'Paid'}</p>
+                    {b.package_id
+                      ? <p className="text-[11px] text-gold-800">Paid on the hall bill</p>
+                      : <p className={balance > 0 ? 'text-[11px] text-rose-600' : 'text-[11px] text-emerald-600'}>{balance > 0 ? `${inr(balance)} due` : 'Paid'}</p>}
                   </div>
                   <div className="flex w-full flex-wrap justify-end gap-1.5 sm:w-auto">
-                    {b.status !== 'cancelled' && balance > 0 && (
+                    {b.status !== 'cancelled' && balance > 0 && !b.package_id && (
                       <Button size="sm" variant="outline" icon={IndianRupee} onClick={() => setPaying(b)}>Payment</Button>
                     )}
                     {(b.status === 'booked' || isAdmin) && (
@@ -92,7 +95,7 @@ export default function BandMelamTab({ isAdmin, hallBookings }) {
                     <Button size="sm" variant="outline" icon={WhatsAppIcon} onClick={() => setShare({ b, t: 'band' })}>Customer</Button>
                     {b.status !== 'cancelled' && (
                       <Button size="sm" variant="outline" icon={WhatsAppIcon} onClick={() => setShare({ b, t: 'band_team' })}
-                        title="Send the programme timing to the band team">Timing to band</Button>
+                        title="Send the programme timing to the sannai team">Timing to team</Button>
                     )}
                     {b.status === 'booked' ? (
                       <>
@@ -105,7 +108,7 @@ export default function BandMelamTab({ isAdmin, hallBookings }) {
                     {isAdmin && (
                       <Button size="sm" variant="danger-soft" icon={Trash2} aria-label="Delete booking" title="Delete booking"
                         onClick={() => remove(`/band/${b.id}`, {
-                          title: 'Delete this Band Melam booking?',
+                          title: 'Delete this Sannai Melam booking?',
                           message: `${b.customer_name} · ${fmtDate(b.event_date)}. Its payments are deleted too. This cannot be undone.`,
                           success: 'Booking deleted',
                           done: list.reload,
@@ -117,9 +120,9 @@ export default function BandMelamTab({ isAdmin, hallBookings }) {
             })}
           </div>
         ) : (
-          <EmptyState icon={Drum} title={filter === 'booked' ? 'No Band Melam booked' : 'No Band Melam bookings yet'}
-            text="Book a Band Melam performance for a function: date, timing, team and price."
-            action={<Button variant="gold" icon={Plus} onClick={() => setEditing({})}>Book Band Melam</Button>} />
+          <EmptyState icon={Drum} title={filter === 'booked' ? 'No Sannai Melam booked' : 'No Sannai Melam bookings yet'}
+            text="Book a Sannai Melam performance for a function: date, timing, team and price."
+            action={<Button variant="gold" icon={Plus} onClick={() => setEditing({})}>Book Sannai Melam</Button>} />
         )}
       </Card>
 
@@ -161,11 +164,11 @@ function BandForm({ booking, hallBookings, onClose, onSaved }) {
   const save = async () => {
     setSaving(true);
     try {
-      await api(editing ? `/band/${booking.id}` : '/band', {
+      const saved = await api(editing ? `/band/${booking.id}` : '/band', {
         method: editing ? 'PUT' : 'POST',
         body: { ...f, hall_booking_id: f.hall_booking_id || null, amount: Number(f.amount) || 0, players: Number(f.players) || 0, advance: Number(f.advance) || 0 },
       });
-      toast(editing ? 'Band Melam updated' : 'Band Melam booked');
+      toast(saved.combo_bill_no ? `${editing ? 'Updated' : 'Booked'} · on the hall's combined bill ${saved.combo_bill_no}` : editing ? 'Sannai Melam updated' : 'Sannai Melam booked');
       onSaved();
     } catch (err) {
       toast(err.message, 'error');
@@ -179,7 +182,7 @@ function BandForm({ booking, hallBookings, onClose, onSaved }) {
   ];
 
   return (
-    <Modal onClose={onClose} title={editing ? 'Edit Band Melam' : 'Book Band Melam'}
+    <Modal onClose={onClose} title={editing ? 'Edit Sannai Melam' : 'Book Sannai Melam'}
       subtitle="A performance for the function. No stock is used."
       footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button form="band-form" type="submit" variant="gold" loading={saving}>{editing ? 'Save changes' : 'Book'}</Button></>}>
       <Form id="band-form" onSubmit={save} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -190,9 +193,9 @@ function BandForm({ booking, hallBookings, onClose, onSaved }) {
         <Field label="Phone"><Input type="tel" value={f.phone} onChange={e => set('phone', e.target.value)} placeholder="Mobile number" /></Field>
         <Field label="Event date" as="div"><DatePicker value={f.event_date} onChange={v => set('event_date', v)} /></Field>
         <Field label="Timing"><Input value={f.timing} onChange={e => set('timing', e.target.value)} placeholder="Baraat 6 PM" /></Field>
-        <Field label="Team / band name (optional)"><Input value={f.team} onChange={e => set('team', e.target.value)} placeholder="Sri Sai Band" /></Field>
-        <Field label="Band team phone" hint="To send them the programme timing on WhatsApp">
-          <Input type="tel" value={f.team_phone} onChange={e => set('team_phone', e.target.value)} placeholder="Band leader's mobile" />
+        <Field label="Team name (optional)"><Input value={f.team} onChange={e => set('team', e.target.value)} placeholder="Sri Sai Sannai Melam" /></Field>
+        <Field label="Team phone" hint="To send the team the programme timing on WhatsApp">
+          <Input type="tel" value={f.team_phone} onChange={e => set('team_phone', e.target.value)} placeholder="Team leader's mobile" />
         </Field>
         <Field label="Players (optional)"><Input type="number" min="0" value={f.players} onChange={e => set('players', e.target.value)} placeholder="8" /></Field>
         <Field label="Price (₹)"><Input type="number" min="1" required value={f.amount} onChange={e => set('amount', e.target.value)} placeholder="15000" /></Field>
@@ -225,7 +228,7 @@ function BandPayment({ booking: b, onClose, onSaved }) {
     }
   };
   return (
-    <Modal size="sm" onClose={onClose} title="Band Melam payment" subtitle={`${b.customer_name} · ${inr(due)} due`}
+    <Modal size="sm" onClose={onClose} title="Sannai Melam payment" subtitle={`${b.customer_name} · ${inr(due)} due`}
       footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button form="band-pay" type="submit" variant="gold" loading={saving}>Record payment</Button></>}>
       <Form id="band-pay" onSubmit={save} className="space-y-3">
         <Field label="Amount (₹)"><Input type="number" min="1" max={due} required value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} /></Field>
