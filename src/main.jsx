@@ -2,6 +2,9 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
+import { setUpInstall } from './install.js';
+
+setUpInstall();
 
 // Scrolling the page with the mouse over a focused amount field would change the number
 // (for example a bill total of 4500 becoming 4536). Let go of the field instead, so the
@@ -22,6 +25,20 @@ window.addEventListener('vite:preloadError', event => {
   try { sessionStorage.setItem('pk_reloaded_at', String(Date.now())); } catch { /* storage blocked */ }
   window.location.reload();
 });
+
+// Opening screen (index.html), shown only in the installed app: the SMC logo stays about 1.6
+// seconds from the start (long enough for its animation), then fades away over the app. In a
+// browser tab it is never shown and is simply removed.
+const splash = document.getElementById('splash');
+if (splash) {
+  if (getComputedStyle(splash).display === 'none') splash.remove();
+  else {
+    setTimeout(() => {
+      splash.classList.add('splash-hide');
+      setTimeout(() => splash.remove(), 600);
+    }, Math.max(0, 1600 - performance.now()));
+  }
+}
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

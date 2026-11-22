@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { makePhoto } from '../imageResize.js';
 import { api } from '../api.js';
-import { useApi, useRemove, useSave } from '../hooks.js';
+import { useApi, useCellLabels, useRemove, useSave } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
 import {
@@ -140,6 +140,7 @@ export default function Supplies() {
   );
 
   // Filtered Rentals
+  const rentalTable = useCellLabels();
   const shownRentals = useMemo(() => {
     return allRentals.filter(r => {
       if (rentalFilter === 'active' && r.status !== 'rented') return false;
@@ -206,7 +207,7 @@ export default function Supplies() {
         title="Function Supplies & Equipment Rentals"
         subtitle="Rent out banquet chairs, tables, utensils, sound & stage equipment to functions and track returns"
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <>
             <Button
               variant="gold"
               icon={Handshake}
@@ -223,12 +224,12 @@ export default function Supplies() {
                 Add New Item
               </Button>
             )}
-          </div>
+          </>
         }
       />
 
       {/* Top Stat Cards */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard
           icon={Boxes}
           label="Total Inventory"
@@ -432,19 +433,22 @@ export default function Supplies() {
                 const rentPct = Math.min(100 - availPct, Math.round((rented / total) * 100));
                 return (
                   <div key={i.id} className="flex min-w-0 flex-col rounded-2xl border border-stone-200 bg-white p-4 transition hover:border-gold-300 hover:shadow-sm">
-                    <SupplyPicture item={i} onView={() => setPhotoItem(i)} />
-                    <div className="mt-3 flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-ink-900">{i.name}</p>
-                        <p className="mt-0.5 text-xs text-stone-500">{i.category}</p>
+                    {/* Phones: a small picture beside the name, so the long list stays short */}
+                    <div className="flex items-start gap-3 sm:block">
+                      <SupplyPicture item={i} onView={() => setPhotoItem(i)} />
+                      <div className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-x-2 gap-y-1 sm:mt-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-ink-900">{i.name}</p>
+                          <p className="mt-0.5 text-xs text-stone-500">{i.category}</p>
+                        </div>
+                        {available === 0 ? (
+                          <Badge tone="rose">All out</Badge>
+                        ) : i.low ? (
+                          <Badge tone="amber">Low stock</Badge>
+                        ) : (
+                          <Badge tone="green">In stock</Badge>
+                        )}
                       </div>
-                      {available === 0 ? (
-                        <Badge tone="rose">All out</Badge>
-                      ) : i.low ? (
-                        <Badge tone="amber">Low stock</Badge>
-                      ) : (
-                        <Badge tone="green">In stock</Badge>
-                      )}
                     </div>
 
                     <div className="mt-3 flex items-baseline justify-between gap-2 text-xs">
@@ -740,7 +744,7 @@ export default function Supplies() {
           ) : (
             shownRentals.length ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table ref={rentalTable} className="table-stack w-full text-sm">
                   <thead className="border-b border-stone-100 bg-stone-50/60">
                     <tr>
                       <th className="th">Customer / Function</th>
@@ -1994,12 +1998,12 @@ function MovesList({ supplyId, onShareWa }) {
 /** The item's picture on its card, or a default icon when it has none. */
 function SupplyPicture({ item, onView }) {
   return item.thumb ? (
-    <button type="button" onClick={onView} className="block aspect-[16/9] w-full cursor-pointer overflow-hidden rounded-xl bg-stone-100"
+    <button type="button" onClick={onView} className="block aspect-square w-16 shrink-0 cursor-pointer overflow-hidden rounded-xl bg-stone-100 sm:aspect-[16/9] sm:w-full"
       aria-label={`See photo of ${item.name}`}>
       <img src={item.thumb} alt={item.name} loading="lazy" className="h-full w-full object-cover" />
     </button>
   ) : (
-    <div className="grid aspect-[16/9] w-full place-items-center rounded-xl bg-stone-50 text-stone-300" aria-hidden="true">
+    <div className="grid aspect-square w-16 shrink-0 place-items-center rounded-xl bg-stone-50 text-stone-300 sm:aspect-[16/9] sm:w-full" aria-hidden="true">
       <Package size={30} strokeWidth={1.5} />
     </div>
   );

@@ -75,7 +75,7 @@ const KINDS = {
   },
   hall: {
     table: 'hall_bookings',
-    select: `SELECT b.*, h.name AS hall_name, h.full_time AS hall_full, h.half_time AS hall_half, u.name AS created_by_name${COMBO_COLUMNS}
+    select: `SELECT b.*, h.name AS hall_name, h.kind AS hall_kind, h.full_time AS hall_full, h.half_time AS hall_half, u.name AS created_by_name${COMBO_COLUMNS}
              FROM hall_bookings b JOIN halls h ON h.id = b.hall_id LEFT JOIN users u ON u.id = b.created_by${COMBO_JOINS}`,
     search: 'b.customer_name LIKE ? OR b.phone LIKE ?',
     range: 'b.event_date BETWEEN ? AND ?',

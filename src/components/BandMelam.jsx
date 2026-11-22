@@ -82,7 +82,7 @@ export default function BandMelamTab({ isAdmin, hallBookings }) {
                       {b.combo_bill_no && <> · <b className="text-gold-800">on combined bill {b.combo_bill_no}</b></>}
                     </p>
                   </div>
-                  <div className="text-right">
+                  <div className="flex w-full flex-wrap items-baseline justify-between gap-x-3 sm:block sm:w-auto sm:text-right">
                     <p className="font-display text-lg font-semibold text-ink-900">{inr(b.amount)}</p>
                     {Number(b.team_amount) > 0 && (
                       <p className="text-[11px] text-stone-500">
@@ -93,14 +93,14 @@ export default function BandMelamTab({ isAdmin, hallBookings }) {
                       ? <p className="text-[11px] text-gold-800">Paid on the hall bill</p>
                       : <p className={balance > 0 ? 'text-[11px] text-rose-600' : 'text-[11px] text-emerald-600'}>{balance > 0 ? `${inr(balance)} due` : 'Paid'}</p>}
                   </div>
-                  <div className="flex w-full flex-wrap justify-end gap-1.5 sm:w-auto">
+                  <div className="row-actions flex w-full flex-wrap justify-end gap-1.5 sm:w-auto">
                     {b.status !== 'cancelled' && balance > 0 && !b.package_id && (
                       <Button size="sm" variant="outline" icon={IndianRupee} onClick={() => setPaying(b)}>Payment</Button>
                     )}
                     {(b.status === 'booked' || isAdmin) && (
                       <Button size="sm" variant="outline" icon={Pencil} onClick={() => setEditing(b)}>Edit</Button>
                     )}
-                    <Button size="sm" variant="outline" icon={WhatsAppIcon} onClick={() => setShare({ b, t: 'band' })}>Customer</Button>
+                    <Button size="sm" variant="outline" icon={WhatsAppIcon} onClick={() => setShare({ b })}>Customer</Button>
                     {b.status !== 'cancelled' && (
                       <Button size="sm" variant="outline" icon={WhatsAppIcon} onClick={() => setShare({ b, t: 'band_team' })}
                         title="Send the programme timing to the sannai team">Timing to team</Button>

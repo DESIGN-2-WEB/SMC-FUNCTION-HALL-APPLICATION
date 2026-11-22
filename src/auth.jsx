@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { api, getToken, setToken } from './api.js';
+import { useSettings } from './settings.jsx';
 
 const AuthCtx = createContext(null);
 
@@ -18,6 +19,13 @@ export function AuthProvider({ children }) {
     }
     return () => window.removeEventListener('pk:logout', onLogout);
   }, []);
+
+  // Some settings are only sent to signed-in users (the Sannai Melam parties), so load them
+  // again once someone signs in
+  const { reload: reloadSettings } = useSettings();
+  useEffect(() => {
+    if (user?.id) reloadSettings();
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Heartbeat ping to keep active session fresh while staff has app open
   useEffect(() => {

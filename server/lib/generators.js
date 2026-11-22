@@ -8,7 +8,7 @@ import { fail, num, str } from './http.js';
  */
 
 /** The generators and their hourly rates from Settings. */
-export function generatorPriceList(settings) {
+function generatorPriceList(settings) {
   let list = [];
   try {
     list = typeof settings.generators === 'string' ? JSON.parse(settings.generators) : settings.generators || [];
@@ -50,7 +50,15 @@ export function parseGenerators(raw, settings, known = []) {
     if (!listed && !old) fail(`Choose "${type}" from the generator list`);
     const hours = Math.max(0, num(g.hours));
     const rate = listed ? Number(listed.rate) || 0 : Number(old.rate) || 0;
-    rows.push({ type: listed ? str(listed.name) : type, hours, rate, amount: Math.round(hours * rate) });
+    const name = listed ? str(listed.name) : type;
+    // Each generator is on the bill once: the same one sent twice is joined, hours added up
+    const same = rows.find(r => r.type === name);
+    if (same) {
+      same.hours = Math.round((same.hours + hours) * 100) / 100;
+      same.amount = Math.round(same.hours * same.rate);
+    } else {
+      rows.push({ type: name, hours, rate, amount: Math.round(hours * rate) });
+    }
   }
   if (rows.length > 6) fail('Up to 6 generators can be added for one event');
   return rows;

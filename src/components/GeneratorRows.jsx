@@ -1,64 +1,74 @@
-import { Plus, X } from 'lucide-react';
 import { inr } from '../utils.js';
-import { Field, Input } from './ui.jsx';
-import { Select } from './pickers.jsx';
+import { Input, cn } from './ui.jsx';
 
 /** Total of a list of generators. */
 export const genTotal = rows => rows.reduce((s, r) => s + (r.type ? Math.round((Number(r.hours) || 0) * (Number(r.rate) || 0)) : 0), 0);
 
+/** One entry per generator: a generator listed twice (saved by the older form) is joined, hours added up. */
+function merged(rows) {
+  const out = [];
+  for (const r of rows) {
+    if (!r?.type) continue;
+    const same = out.find(x => x.type === r.type);
+    if (!same) out.push({ ...r });
+    else if (r.hours !== '' && r.hours != null) same.hours = (Number(same.hours) || 0) + (Number(r.hours) || 0);
+  }
+  return out;
+}
+
 /**
- * The generators run for one event: one row per generator (say the big one for 4 hours and the
- * small one for 2), each with its own rate from Settings. `onChange` gets the new list.
- * `locked` shows them without letting them change.
+ * The generators run for one event: one line for each generator in Settings (say the 120 kVA
+ * and the 30 kVA), each ticked when it was used, with its own hours and rate. A generator can
+ * be on the bill only once. `onChange` gets the list of the ticked ones. `locked` shows them
+ * without letting them change.
  */
 export default function GeneratorRows({ rows, onChange, priceList, locked }) {
-  const rateOf = type => {
-    const listed = priceList.find(g => g.name === type);
-    return Number(listed ? listed.rate : rows.find(r => r.type === type)?.rate) || 0;
-  };
-  // A generator saved earlier but since removed from Settings still shows with its old rate
-  const options = [
-    ...priceList.map(g => ({ value: g.name, label: `${g.name} (${inr(g.rate)}/hr)` })),
-    ...rows.filter(r => r.type && !priceList.some(g => g.name === r.type))
-      .map(r => ({ value: r.type, label: `${r.type} (${inr(r.rate)}/hr)` })),
-  ];
-  const change = (i, patch) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const add = () => {
-    // Suggest a generator not used yet in this bill
-    const next = priceList.find(g => !rows.some(r => r.type === g.name)) || priceList[0];
-    onChange([...rows, { type: next?.name || '', hours: '', rate: Number(next?.rate) || 0 }]);
-  };
+  const used = merged(rows);
 
   if (locked) {
-    return rows.length
-      ? <ul className="space-y-1 text-xs text-stone-600">{rows.map((r, i) => <li key={i}>{r.type} · {r.hours} hrs × {inr(r.rate)} = <b className="text-ink-900">{inr(Math.round(r.hours * r.rate))}</b></li>)}</ul>
+    return used.length
+      ? <ul className="space-y-1 text-xs text-stone-600">{used.map(r => <li key={r.type}>{r.type} · {Number(r.hours) || 0} hrs × {inr(r.rate)} = <b className="text-ink-900">{inr(Math.round((Number(r.hours) || 0) * r.rate))}</b></li>)}</ul>
       : <p className="text-xs text-stone-500">No generator used</p>;
   }
 
+  // Every generator from Settings, plus one saved earlier that has since been removed from Settings
+  const lines = [
+    ...priceList.map(g => ({ type: g.name, rate: Number(g.rate) || 0 })),
+    ...used.filter(r => !priceList.some(g => g.name === r.type)).map(r => ({ type: r.type, rate: Number(r.rate) || 0 })),
+  ];
+  // Keep the list in the same order as the lines
+  const emit = next => onChange(lines.map(l => next.find(r => r.type === l.type)).filter(Boolean));
+  const toggle = (line, on) => emit(on ? [...used, { type: line.type, hours: '', rate: line.rate }] : used.filter(r => r.type !== line.type));
+  const setHours = (line, hours) => {
+    const has = used.some(r => r.type === line.type);
+    // Typing hours ticks the generator
+    emit(has ? used.map(r => (r.type === line.type ? { ...r, hours } : r)) : [...used, { type: line.type, hours, rate: line.rate }]);
+  };
+
+  if (!lines.length) return <p className="text-xs text-stone-500">No generators are set up in Settings.</p>;
+
   return (
-    <div className="space-y-2">
-      {rows.length === 0 && <p className="text-xs text-stone-500">No generator used</p>}
-      {rows.map((r, i) => (
-        <div key={i} className="grid grid-cols-[1fr_5.5rem_auto] items-end gap-2 sm:grid-cols-[1fr_6.5rem_6rem_auto]">
-          <Field label={rows.length > 1 ? `Generator ${i + 1}` : 'Generator'} as="div">
-            <Select value={r.type} onChange={v => change(i, { type: v, rate: rateOf(v) })} options={options} />
-          </Field>
-          <Field label="Hours">
-            <Input type="number" min="0" step="0.5" placeholder="0" value={r.hours} onChange={e => change(i, { hours: e.target.value })} />
-          </Field>
-          <p className="hidden pb-2.5 text-right text-sm font-semibold text-ink-900 sm:block">{inr(Math.round((Number(r.hours) || 0) * r.rate))}</p>
-          <button type="button" onClick={() => onChange(rows.filter((_, j) => j !== i))} aria-label="Remove this generator"
-            className="mb-1 grid size-9 place-items-center rounded-lg text-stone-400 transition hover:bg-rose-50 hover:text-rose-600">
-            <X size={16} />
-          </button>
-        </div>
-      ))}
-      {rows.length < 6 && (
-        <button type="button" onClick={add}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gold-400 px-3 py-1.5 text-xs font-semibold text-gold-800 transition hover:bg-gold-50">
-          <Plus size={14} /> {rows.length ? 'Add another generator' : 'Add generator'}
-        </button>
-      )}
+    <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+      {lines.map((line, i) => {
+        const r = used.find(x => x.type === line.type);
+        const on = !!r;
+        const amount = on ? Math.round((Number(r.hours) || 0) * line.rate) : 0;
+        return (
+          <div key={line.type} className={cn('flex items-center gap-2 px-3 py-2.5 sm:gap-3', i > 0 && 'border-t border-stone-100', on && 'bg-gold-50/40')}>
+            <label className="flex flex-1 cursor-pointer items-center gap-2.5">
+              <input type="checkbox" checked={on} onChange={e => toggle(line, e.target.checked)}
+                className="size-4 shrink-0 cursor-pointer accent-gold-600" />
+              <span className="min-w-0">
+                <span className="block whitespace-nowrap text-sm font-medium text-ink-900">{line.type}</span>
+                <span className="block whitespace-nowrap text-xs text-stone-500">{inr(line.rate)}/hr</span>
+              </span>
+            </label>
+            <Input type="number" min="0" step="0.5" placeholder="Hours" aria-label={`Hours for ${line.type}`}
+              className="w-20 shrink-0 sm:w-24" value={on ? r.hours : ''} onChange={e => setHours(line, e.target.value)} />
+            <span className={cn('w-16 shrink-0 text-right text-sm font-semibold sm:w-20', on ? 'text-ink-900' : 'text-stone-300')}>{inr(amount)}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

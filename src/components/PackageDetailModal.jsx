@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BedDouble, Boxes, CreditCard, Drum, Flower2, Landmark, Pencil, Plus, Printer, Trash2, Zap } from 'lucide-react';
+import { Ban, BedDouble, Boxes, CreditCard, Drum, Flower2, Landmark, Pencil, Plus, Printer, Trash2, Zap } from 'lucide-react';
 import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import { Badge, Button, Card, Field, Form, Input, Modal, cn, useUI } from './ui.jsx';
@@ -10,6 +10,7 @@ import { ExtraChargesForm } from './ExtraChargesForm.jsx';
 import AddHallExtras from './AddHallExtras.jsx';
 import { Select } from './pickers.jsx';
 import { WhatsAppIcon } from './WhatsAppModal.jsx';
+import MoreMenu from './MoreMenu.jsx';
 
 export default function PackageDetailModal({ packageId, onClose, onRefresh, onShareWa, onDeleted }) {
   const { toast, confirm } = useUI();
@@ -124,6 +125,11 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
     }
   };
 
+  const comboMenu = [
+    ...(!isCancelled ? [{ icon: Ban, label: 'Cancel combo', tone: 'rose', onClick: handleCancelPackage }] : []),
+    ...(isAdmin ? [{ icon: Trash2, label: 'Delete combo', tone: 'rose', onClick: handleDeletePackage, divider: !isCancelled }] : []),
+  ];
+
   return (
     <>
       <Modal
@@ -132,49 +138,18 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
         subtitle={`${pkg.customer_name} · ${pkg.phone} · ${fmtDate(pkg.event_date)} (${slotLabel(pkg.slot)})`}
         onClose={onClose}
         footer={
-          <div className="flex w-full flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1">
-              {!isCancelled && (
-                <Button
-                  variant="danger-soft"
-                  size="sm"
-                  loading={cancelling}
-                  onClick={handleCancelPackage}
-                >
-                  Cancel Combo
-                </Button>
-              )}
-              {isAdmin && (
-                <Button variant="danger-soft" size="sm" icon={Trash2} loading={deleting} onClick={handleDeletePackage}>
-                  Delete combo
-                </Button>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button variant="outline" icon={Printer} onClick={() => printComboBill(pkg, settings)}>
-                Print combined bill
-              </Button>
-              <Button
-                variant="outline"
-                icon={WhatsAppIcon}
-                onClick={() => onShareWa?.(pkg)}
-                className="text-emerald-700"
-              >
-                WhatsApp Voucher
-              </Button>
-              {pkg.hall && !isCancelled && ['tentative', 'confirmed'].includes(pkg.hall.status) && (
-                <Button variant="outline" icon={Plus} onClick={() => setAddingExtras(true)}>Add more</Button>
-              )}
-              {balance > 0 && !isCancelled && (
-                <Button variant="gold" icon={CreditCard} onClick={() => setPayModal(true)}>
-                  Take Payment ({inr(balance)})
-                </Button>
-              )}
-              <Button variant="outline" onClick={onClose}>
-                Close
-              </Button>
-            </div>
-          </div>
+          // Everyday actions in a row; cancelling and deleting the combo sit under "More"
+          <>
+            {comboMenu.length > 0 && <MoreMenu items={comboMenu} disabled={cancelling || deleting} />}
+            <Button variant="outline" icon={Printer} onClick={() => printComboBill(pkg, settings)}>Print bill</Button>
+            <Button variant="outline" icon={WhatsAppIcon} onClick={() => onShareWa?.(pkg)} className="text-emerald-700">WhatsApp</Button>
+            {pkg.hall && !isCancelled && ['tentative', 'confirmed'].includes(pkg.hall.status) && (
+              <Button variant="outline" icon={Plus} onClick={() => setAddingExtras(true)}>Add more</Button>
+            )}
+            {balance > 0 && !isCancelled && (
+              <Button variant="gold" icon={CreditCard} onClick={() => setPayModal(true)}>Take payment ({inr(balance)})</Button>
+            )}
+          </>
         }
       >
         <div className="space-y-5">
@@ -535,7 +510,7 @@ const slotLabel = slotName;
 const roomNights = r => Math.max(1, nights(r.check_in, r.check_out));
 
 /** One printable bill for everything in the combo: hall, extras, rooms, supplies, payments. */
-export function printComboBill(pkg, settings) {
+function printComboBill(pkg, settings) {
   const propName = settings?.property_name || 'SMC Function Hall (A/C)';
   const bannerName = settings?.banner_name || '';
   const tagline = settings?.property_tagline || 'Kalyana Mandapam & Function Hall';

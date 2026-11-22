@@ -24,7 +24,7 @@ const loadPackage = id => {
   let hall = null;
   if (pkg.hall_booking_id) {
     hall = get(`
-      SELECT b.*, h.name AS hall_name, h.is_combo, h.full_time AS hall_full, h.half_time AS hall_half
+      SELECT b.*, h.name AS hall_name, h.kind AS hall_kind, h.is_combo, h.full_time AS hall_full, h.half_time AS hall_half
       FROM hall_bookings b
       JOIN halls h ON h.id = b.hall_id
       WHERE b.id = ?
@@ -588,6 +588,14 @@ r.patch('/:id/rooms/:roomBookingId', requireAdmin, (req, res) => {
 r.patch('/:id/cancel', (req, res) => {
   const pkg = loadPackage(req.params.id);
   if (pkg.status === 'cancelled') fail('Package is already cancelled');
+  // Once any part of it is over (the event completed, a guest checked out, decoration or Sannai
+  // Melam done), cancelling would wipe money still owed: that is for the admin only, as with
+  // reopening a finished booking
+  const started = pkg.hall?.status === 'completed'
+    || pkg.rooms.some(r => r.status === 'checked_out' || r.status === 'checked_in')
+    || get("SELECT 1 FROM decor_plans WHERE package_id = ? AND status = 'done' LIMIT 1", pkg.id)
+    || get("SELECT 1 FROM band_bookings WHERE package_id = ? AND status = 'done' LIMIT 1", pkg.id);
+  if (started && req.user.role !== 'admin') fail('Only the admin can cancel a combo that has already started or finished', 403);
 
   tx(() => {
     // 1. Cancel Package

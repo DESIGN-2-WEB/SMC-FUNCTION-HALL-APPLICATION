@@ -25,15 +25,15 @@ export default function Activity() {
         title="Activity Log"
         subtitle="Complete audit log of actions within the past 7 days (older logs are automatically cleaned up)"
         actions={
-          <div className="flex flex-wrap items-center gap-3">
-            <Button variant="outline" size="sm" icon={ArrowLeft} onClick={() => nav('/')}>
+          <>
+            <Button variant="outline" icon={ArrowLeft} onClick={() => nav('/')}>
               Dashboard
             </Button>
-            <div className="relative w-64">
+            <div className="relative sm:w-64">
               <Search size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-stone-400" />
               <Input className="pl-9" placeholder="Filter activity" value={q} onChange={e => setQ(e.target.value)} />
             </div>
-          </div>
+          </>
         }
       />
       {rows.length ? (

@@ -6,12 +6,61 @@
     <meta name="theme-color" content="#0e1a2b" />
     <title>SMC Function Hall (A/C) · Kalyana Mandapam</title>
     <link rel="icon" type="image/jpeg" href="/logo.jpg" />
-    <link rel="apple-touch-icon" href="/logo.jpg" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="SMC Hall" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="preload" as="image" href="/logo-square.jpg" />
+    <!-- Opening screen of the installed app (not the website in a browser tab): the SMC logo on the
+         brand colour while the app starts. Removed in main.jsx. -->
+    <style>
+      #splash { display: none; }
+      @media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+        #splash {
+          position: fixed; inset: 0; z-index: 9999;
+          display: flex; align-items: center; justify-content: center;
+          background: #e05624;
+          transition: opacity 0.45s ease, visibility 0.45s ease;
+        }
+        html:has(#splash:not(.splash-hide)) { overflow: hidden; }
+      }
+      #splash.splash-hide { opacity: 0; visibility: hidden; }
+      /* The logo pops in, a light sweeps across it, and a soft ring spreads out behind it */
+      #splash .splash-logo {
+        position: relative; width: 132px; height: 132px;
+        animation: splash-pop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      #splash .splash-logo img {
+        display: block; width: 100%; height: 100%; border-radius: 30px;
+        box-shadow: 0 18px 50px -12px rgba(80, 20, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.25);
+      }
+      #splash .splash-logo::after {
+        content: ''; position: absolute; inset: 0; border-radius: 30px; pointer-events: none;
+        background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.5) 50%, transparent 65%) no-repeat;
+        background-size: 250% 100%; background-position: 150% 0;
+        animation: splash-shine 1s 0.55s ease-in-out both;
+      }
+      #splash .splash-logo::before {
+        content: ''; position: absolute; inset: 0; border-radius: 34px; pointer-events: none;
+        border: 2px solid rgba(255, 255, 255, 0.55);
+        animation: splash-ring 1.5s 0.45s ease-out infinite both;
+      }
+      @keyframes splash-pop { from { opacity: 0; transform: scale(0.6); } }
+      @keyframes splash-shine { to { background-position: -50% 0; } }
+      @keyframes splash-ring { from { opacity: 0.7; transform: scale(1); } to { opacity: 0; transform: scale(1.6); } }
+      @media (prefers-reduced-motion: reduce) {
+        #splash .splash-logo, #splash .splash-logo::after, #splash .splash-logo::before { animation: none; }
+      }
+    </style>
   </head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <div class="splash-logo"><img src="/logo-square.jpg" alt="" /></div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

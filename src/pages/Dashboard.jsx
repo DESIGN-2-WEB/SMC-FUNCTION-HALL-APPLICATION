@@ -47,7 +47,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard icon={BedDouble} label="Rooms occupied" value={`${occupied} / ${data.rooms.length}`} sub={`${data.arrivals.length} arrival${data.arrivals.length === 1 ? '' : 's'} pending`} />
         <StatCard icon={PartyPopper} label="Events today" count={eventsToday} sub={`${data.upcoming.length} upcoming`} accent="violet" />
         <StatCard icon={Wallet} label="Collected this month" count={data.collectedMonth} format={inr} sub={`${inr(data.collectedToday)} today`} accent="green" />
@@ -61,7 +61,7 @@ export default function Dashboard() {
         <Card className="xl:col-span-2">
           <CardHeader icon={BedDouble} title="Room status" subtitle="Live view of all rooms"
             action={<Button variant="ghost" size="sm" onClick={() => nav('/rooms')}>Manage <ArrowRight size={14} /></Button>} />
-          <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3 [&>*]:min-w-0">
+          <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-3 [&>*]:min-w-0">
             {data.rooms.map(r => {
               const s = ROOM_STATE[r.state];
               const suite = r.type === 'Suite';

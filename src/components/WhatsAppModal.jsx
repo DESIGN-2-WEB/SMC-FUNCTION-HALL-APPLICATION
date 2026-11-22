@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { Check, Copy, Smartphone } from 'lucide-react';
 import { useSettings } from '../settings.jsx';
 import { Button, Field, Input, Modal, Segmented, useUI } from './ui.jsx';
-import { buildBandMessage, buildBandTeamMessage, buildBulkRentalMessage, buildDecorMessage, buildHallMessage, buildPackageMessage, buildRoomMessage, buildSupplyMessage, cleanPhone, openWhatsApp } from '../utils/whatsapp.js';
+import {
+  buildBandMessage, buildBandTeamMessage, buildBulkRentalMessage, buildDecorMessage, buildHallMessage, buildPackageMessage,
+  buildRoomMessage, buildSupplyMessage, cleanPhone, messageTypes, openWhatsApp,
+} from '../utils/whatsapp.js';
 
 export function WhatsAppIcon({ size = 16, className = '' }) {
   return (
@@ -23,39 +26,25 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, i
   const isDecor = kind === 'decor';
   const isBand = kind === 'band';
 
-  // Templates options based on booking kind
-  // Greeting (booking confirmed / welcome), Payment (received, due or fully paid), Thank you
-  const templates = isRoom
-    ? [
-        { value: 'booking', label: 'Greeting' },
-        { value: 'payment', label: 'Payment' },
-        { value: 'check_out', label: 'Thank you' },
-      ]
-    : isHall
-    ? [
-        { value: 'booking', label: 'Greeting' },
-        { value: 'payment', label: 'Payment' },
-        { value: 'completed', label: 'Thank you' },
-      ]
-    : isPackage
-    ? [
-        { value: 'booking', label: 'Greeting' },
-        { value: 'payment', label: 'Payment' },
-      ]
+  // Only the messages that fit the booking right now (see messageTypes): the greeting while it
+  // is booked, the payment message (a reminder while money is due, "completed" once paid), and
+  // the thank-you only after the event or check-out. A cancelled booking has none.
+  const bookingKind = isRoom || isHall || isPackage || isBand;
+  const templates = bookingKind
+    ? messageTypes(kind, booking)
     : isBulkRental
     ? [{ value: 'rental', label: 'Dispatch slip' }]
     : isDecor
     ? [{ value: 'decor', label: 'Decoration quote' }]
-    : isBand
-    ? [{ value: 'band', label: 'To customer' }, { value: 'band_team', label: 'Timing to sannai team' }]
     : [{ value: 'supply', label: 'Supply receipt' }];
+  const noMessage = bookingKind && !templates.length;
 
-  // Open on the message that fits where the booking is: thanks once it is over
-  const [template, setTemplate] = useState(() =>
-    initialTemplate ? initialTemplate
-      : isRoom && booking?.status === 'checked_out' ? 'check_out'
-      : isHall && booking?.status === 'completed' ? 'completed'
-        : 'booking');
+  // Open on the asked-for message if it fits, else the thank-you once it is over, else the greeting
+  const [template, setTemplate] = useState(() => {
+    const has = v => templates.some(t => t.value === v);
+    if (initialTemplate && has(initialTemplate)) return initialTemplate;
+    return ['thank_you', 'booking'].find(has) || templates[0]?.value || '';
+  });
   // The sannai team's message goes to the team's own phone, the rest to the customer
   const phoneFor = t => (isSupply ? '' : isBand && t === 'band_team' ? booking?.team_phone || '' : booking?.phone || '');
   const [phone, setPhone] = useState(() => phoneFor(template));
@@ -63,8 +52,10 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, i
   const [copied, setCopied] = useState(false);
 
   // Generate message based on selected template
-  const text = isBand
-    ? (template === 'band_team' ? buildBandTeamMessage(booking, settings) : buildBandMessage(booking, settings))
+  const text = noMessage
+    ? ''
+    : isBand
+    ? (template === 'band_team' ? buildBandTeamMessage(booking, settings) : buildBandMessage(booking, settings, template))
     : isDecor
     ? buildDecorMessage(booking, settings)
     : isBulkRental
@@ -81,6 +72,7 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, i
   const isValidNumber = cleanedNumber.length >= 10;
 
   const handleDirectWhatsApp = () => {
+    if (noMessage) return;
     if (!phone.trim()) {
       return toast('Please enter a phone number', 'error');
     }
@@ -103,11 +95,11 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, i
     <Modal
       size="md"
       title="Share Receipt on WhatsApp"
-      subtitle={`Send formatted receipt & confirmation to ${isRoom ? booking?.guest_name : isHall || isDecor || isBand ? booking?.customer_name : 'Customer'}`}
+      subtitle={`Message to ${isRoom ? booking?.guest_name : booking?.customer_name || 'the customer'}`}
       onClose={onClose}
       footer={
         <div className="flex w-full flex-wrap items-center justify-between gap-2.5">
-          <Button type="button" variant="outline" size="sm" icon={copied ? Check : Copy} onClick={handleCopy}>
+          <Button type="button" variant="outline" size="sm" icon={copied ? Check : Copy} onClick={handleCopy} disabled={noMessage}>
             {copied ? 'Copied' : 'Copy text'}
           </Button>
 
@@ -121,6 +113,7 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, i
               size="sm"
               icon={WhatsAppIcon}
               onClick={handleDirectWhatsApp}
+              disabled={noMessage}
               className="bg-[#25D366] text-white hover:bg-[#20ba59] shadow-sm shadow-[#25D366]/30 font-semibold"
             >
               Send on WhatsApp
@@ -157,7 +150,14 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, i
           )}
         </div>
 
+        {noMessage && (
+          <p className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-sm text-rose-700">
+            This booking is cancelled, so there is no message to send.
+          </p>
+        )}
+
         {/* WhatsApp Chat Preview Card */}
+        {!noMessage && (
         <div className="rounded-2xl border border-stone-200 bg-[#E5DDD5] p-3.5 relative overflow-hidden shadow-inner">
           <div className="mb-2 flex items-center justify-between border-b border-stone-300/60 pb-1.5 text-[11px] text-stone-600 font-semibold">
             <span className="flex items-center gap-1.5">
@@ -175,7 +175,7 @@ export default function WhatsAppModal({ kind, booking, supplyItem, supplyMove, i
             </div>
           </div>
         </div>
-
+        )}
       </div>
     </Modal>
   );

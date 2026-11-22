@@ -1,12 +1,12 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { api } from './api.js';
 
-export const DEFAULT_GENERATORS = [
+const DEFAULT_GENERATORS = [
   { name: '120 kVA', rate: 1500 },
   { name: '30 kVA', rate: 450 },
 ];
 
-export const defaultSettings = {
+const defaultSettings = {
   property_name: 'SMC Function Hall (A/C)',
   property_short: 'SMC Function Hall',
   property_tagline: 'Kalyana Mandapam & Function Hall',

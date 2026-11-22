@@ -81,7 +81,7 @@ export default function Rooms() {
         </div>
         {bookings.data?.length ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="table-cards w-full text-sm">
               <thead className="border-b border-stone-100 bg-stone-50/60">
                 <tr>
                   <th className="th">Guest</th>
@@ -102,21 +102,21 @@ export default function Rooms() {
                       onClick={() => setDetailId(b.id)}
                       className="group cursor-pointer transition-colors duration-150 hover:bg-gold-50/80"
                     >
-                      <td className="td">
+                      <td className="td max-lg:order-1">
                         <p className="font-medium text-ink-900 group-hover:text-gold-900 transition-colors">{b.guest_name}</p>
                         <p className="text-xs text-stone-500">{b.phone || '—'}</p>
                       </td>
-                      <td className="td whitespace-nowrap">{b.room_name}</td>
-                      <td className="td whitespace-nowrap">
-                        <p>{fmtShort(b.check_in)} → {fmtShort(b.check_out)}</p>
+                      <td className="td whitespace-nowrap max-lg:hidden">{b.room_name}</td>
+                      <td className="td whitespace-nowrap max-lg:order-3 max-lg:whitespace-normal">
+                        <p className="max-lg:text-xs max-lg:font-medium max-lg:text-stone-600"><span className="lg:hidden">{b.room_name} · </span>{fmtShort(b.check_in)} → {fmtShort(b.check_out)}</p>
                         <p className="text-xs text-stone-500">{n} night{n === 1 ? '' : 's'} · {b.guests} guest{b.guests === 1 ? '' : 's'}</p>
                       </td>
-                      <td className="td text-right whitespace-nowrap">
+                      <td className="td text-right whitespace-nowrap max-lg:order-2">
                         <p className="font-medium">{inr(b.total)}</p>
                         <p className={cn('text-xs', due > 0 ? 'text-rose-600' : 'text-emerald-600')}>{b.package_id ? 'Combo · ' : ''}{due > 0 ? `${inr(due)} due` : 'Paid'}</p>
                       </td>
-                      <td className="td"><Badge tone={ROOM_STATUS[b.status].tone} dot>{ROOM_STATUS[b.status].label}</Badge></td>
-                      <td className="td text-right whitespace-nowrap">
+                      <td className="td max-lg:order-4 max-lg:self-end max-lg:justify-self-end"><Badge tone={ROOM_STATUS[b.status].tone} dot>{ROOM_STATUS[b.status].label}</Badge></td>
+                      <td className="td text-right whitespace-nowrap max-lg:hidden">
                         <span className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-400 group-hover:text-gold-800 group-hover:bg-gold-100/70 transition">
                           View <ChevronRight size={14} className="transition-transform group-hover:translate-x-0.5" />
                         </span>

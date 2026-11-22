@@ -478,12 +478,12 @@ function seedDecorItems() {
   run("INSERT INTO settings (key, value) VALUES ('_decor_seeded', '1')");
 }
 
-export const DEFAULT_GENERATORS = [
+const DEFAULT_GENERATORS = [
   { name: '120 kVA', rate: 1500 },
   { name: '30 kVA', rate: 450 },
 ];
 
-export const CATERING_ITEMS = [
+const CATERING_ITEMS = [
   // Page 1
   ['Double gas stove (డబుల్ గ్యాస్ స్టవ్)', 'Stoves & Fuel', 'pcs', 4, 1, 250],
   ['Single gas stove (సింగిల్ గ్యాస్ స్టవ్)', 'Stoves & Fuel', 'pcs', 6, 1, 150],
@@ -545,7 +545,7 @@ export const CATERING_ITEMS = [
   ['Mineral water cans (for cooking) (మినరల్ వాటర్ క్యాన్స్ (వంటకి))', 'Containers & Water', 'cans', 50, 10, 40],
 ];
 
-export const SUPPLIES = CATERING_ITEMS;
+const SUPPLIES = CATERING_ITEMS;
 
 const USERS = [
   ['admin', 'Penta Jayashankararao', 'admin123', 'admin'],

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { all, log, run, tx } from '../db.js';
 import { DEFAULT_SETTINGS } from '../schema.js';
-import { requireAdmin, requireAuth } from '../middleware/auth.js';
+import { requireAdmin, requireAuth, userOf } from '../middleware/auth.js';
 import { SYNC_ON } from '../mysql.js';
 
 const r = Router();
@@ -18,8 +18,15 @@ export function getDBSettings() {
   return s;
 }
 
+// Settings the login page has no need for: only signed-in users get them. The Sannai Melam
+// parties hold each party's phone and the internal party price (what the hall pays them).
+const PRIVATE_SETTINGS = ['sannai_parties'];
+
+// Public, so the login page can show the hall's name and logo before anyone signs in
 r.get('/', (req, res) => {
-  res.json(getDBSettings());
+  const s = getDBSettings();
+  if (!userOf(req)) for (const key of PRIVATE_SETTINGS) delete s[key];
+  res.json(s);
 });
 
 // Quick check after a deploy: reaching this means the database loaded (the sync step runs first)

@@ -39,7 +39,7 @@ r.get('/users', (req, res) =>
   res.json(all("SELECT username, name, role FROM users WHERE active = 1 ORDER BY role = 'admin' DESC, name")));
 
 // Device / browser parser for staff login logs
-export function parseDevice(ua = '') {
+function parseDevice(ua = '') {
   if (!ua) return 'Web Browser';
   let os = 'Desktop';
   if (/windows nt 10/i.test(ua)) os = 'Windows 10/11';

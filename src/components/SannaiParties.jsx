@@ -14,7 +14,7 @@ import { Select } from './pickers.jsx';
  */
 
 /** The saved parties. */
-export function useSannaiParties() {
+function useSannaiParties() {
   const { settings } = useSettings();
   try {
     const list = JSON.parse(settings.sannai_parties || '[]');

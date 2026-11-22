@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BedDouble, Eye, EyeOff, Lock, Package, PartyPopper, UserRound } from 'lucide-react';
+import { BedDouble, Download, Eye, EyeOff, Lock, MonitorSmartphone, Package, PartyPopper, UserRound } from 'lucide-react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
@@ -8,6 +8,7 @@ import { Button, Form } from '../components/ui.jsx';
 import { Select } from '../components/pickers.jsx';
 import SplitText from '../components/reactbits/SplitText.jsx';
 import { reducedMotion, reveal, useGSAP } from '../motion.js';
+import { installSteps, useInstall } from '../install.js';
 
 const FEATURES = [
   [BedDouble, 'Suite & AC rooms', 'Bookings, check-ins and payments'],
@@ -111,7 +112,8 @@ export default function Login() {
       </div>
 
       {/* Form */}
-      <div className="flex items-center justify-center px-6 py-12">
+      <div className="relative flex items-center justify-center px-6 py-16">
+        <InstallApp />
         <div className="w-full max-w-sm animate-rise">
           <div className="mb-10 lg:hidden"><Brand light={false} /></div>
           <SplitText text="Welcome back" tag="h2" textAlign="left" splitType="chars" delay={35} duration={0.9} trigger="load"
@@ -140,6 +142,30 @@ export default function Login() {
           </Form>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Install the app on this phone or computer: it then opens from its own icon, like any app
+function InstallApp() {
+  const { installed, canPrompt, install } = useInstall();
+  const [help, setHelp] = useState(false);
+  if (installed) return null;
+
+  // Top right of the screen; the steps open under it when the browser has no install box
+  return (
+    <div className="absolute top-4 right-4 z-10 flex max-w-[calc(100%-2rem)] flex-col items-end sm:top-6 sm:right-6">
+      <Button type="button" variant="outline" size="sm" icon={Download} className="bg-white shadow-xs"
+        title="Install this app on your phone or computer"
+        onClick={async () => { if (!(canPrompt && await install())) setHelp(h => !h); }}>
+        Install app
+      </Button>
+      {help && !canPrompt && (
+        <div className="mt-2 w-72 max-w-full animate-pop rounded-xl border border-gold-200 bg-white p-3.5 text-xs text-ink-700 shadow-lg">
+          <p className="mb-1 flex items-center gap-1.5 font-semibold text-ink-900"><MonitorSmartphone size={14} /> Install on this device</p>
+          <p>{installSteps()}</p>
+        </div>
+      )}
     </div>
   );
 }

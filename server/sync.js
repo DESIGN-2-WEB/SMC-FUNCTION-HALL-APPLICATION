@@ -34,7 +34,7 @@ const TABLES = [
 ];
 const PK = Object.fromEntries(TABLES);
 
-export const VERSION_KEY = '_data_version';
+const VERSION_KEY = '_data_version';
 const CHUNK = 500;
 const READ_CHECK_MS = 3000; // re-check MySQL when the last check is older than this
 
@@ -81,7 +81,7 @@ export function installSyncTriggers() {
 }
 
 /** Column lists of the synced tables (used to create the MySQL tables and the import file). */
-export const syncedColumns = () => Object.fromEntries(TABLES.map(([t]) => [t, columns[t]]));
+const syncedColumns = () => Object.fromEntries(TABLES.map(([t]) => [t, columns[t]]));
 
 export const lastSeq = () =>
   SYNC_ON ? db.prepare('SELECT COALESCE(MAX(seq), 0) AS s FROM _sync_log').get().s : 0;
@@ -275,7 +275,7 @@ function checkRemote() {
  * - other requests check when the last check is over 3 seconds old.
  * Requests arriving together share a single check.
  */
-export async function ensureFresh(isWrite) {
+async function ensureFresh(isWrite) {
   if (!SYNC_ON) return;
   if (isWrite || stale || Date.now() - lastCheck >= READ_CHECK_MS) return checkRemote();
 }

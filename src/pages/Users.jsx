@@ -3,7 +3,7 @@ import {
   Clock, History, KeyRound, LogIn, LogOut, Pencil, Plus, RefreshCw, Search, ShieldCheck, Trash2, UserCheck, UserRound, Users as UsersIcon, Wifi,
 } from 'lucide-react';
 import { api } from '../api.js';
-import { useApi, useRemove, useSave } from '../hooks.js';
+import { useApi, useCellLabels, useRemove, useSave } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import {
   Avatar, Badge, Button, Card, EmptyState, Field, Form, Input, Modal, PageHeader, PageLoader, Segmented, StatCard, cn, useUI,
@@ -66,6 +66,7 @@ export default function Users() {
     }
   };
 
+  const sessionTable = useCellLabels();
   if (!users) return <PageLoader />;
 
   const activeStaffList = sessionsData?.metrics?.active_now_staff || [];
@@ -85,7 +86,7 @@ export default function Users() {
         title="Staff & Login Attendance"
         subtitle="Manage login credentials, monitor staff logins, logout times, and total work stay duration"
         actions={
-          <div className="flex items-center gap-2">
+          <>
             {tab === 'sessions' && (
               <Button
                 variant="outline"
@@ -99,7 +100,7 @@ export default function Users() {
             <Button variant="gold" icon={Plus} onClick={() => setEdit({})}>
               Add Login
             </Button>
-          </div>
+          </>
         }
       />
 
@@ -355,7 +356,7 @@ export default function Users() {
 
             {sessions.length ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table ref={sessionTable} className="table-stack w-full text-sm">
                   <thead className="border-b border-stone-100 bg-stone-50/60">
                     <tr>
                       <th className="th">Staff Member</th>

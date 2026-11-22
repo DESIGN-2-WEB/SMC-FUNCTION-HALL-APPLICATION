@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { BedDouble, Drum, IndianRupee, PartyPopper, Trash2, Wallet } from 'lucide-react';
 import { useApi, useRemove } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
-import { Badge, Button, Card, EmptyState, Field, PageHeader, StatCard, cn } from '../components/ui.jsx';
+import { Badge, Button, Card, EmptyState, PageHeader, Segmented, StatCard } from '../components/ui.jsx';
 import { DatePicker } from '../components/pickers.jsx';
 import { METHODS, addDays, fmtDate, inr, today } from '../utils.js';
 import { useRowsReveal } from '../motion.js';
@@ -46,24 +46,30 @@ export default function Payments() {
     <>
       <PageHeader title="Payments" subtitle="All money received for rooms and halls" />
 
-      <Card className="mb-6 flex flex-wrap items-end gap-4 p-4">
-        <div className="flex flex-wrap gap-1.5">
-          {presets.map(([label, r]) => (
-            <button key={label} onClick={() => setRange(r)}
-              className={cn('cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition',
-                range[0] === r[0] && range[1] === r[1] ? 'bg-ink-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200')}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="ml-auto flex flex-wrap gap-3">
-          <Field label="From"><DatePicker value={range[0]} max={range[1]} onChange={v => setRange([v, range[1]])} /></Field>
-          <Field label="To"><DatePicker value={range[1]} min={range[0]} onChange={v => setRange([range[0], v])} /></Field>
+      {/* Period: quick choices on the left, the exact dates on the right, all on one line */}
+      <Card className="mb-6 flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
+        <Segmented
+          value={presets.find(([, r]) => range[0] === r[0] && range[1] === r[1])?.[0] || ''}
+          onChange={label => setRange(presets.find(([l]) => l === label)[1])}
+          options={presets.map(([label]) => ({ value: label, label }))}
+          className="self-start max-sm:grid max-sm:w-full max-sm:grid-cols-2 [&>button]:justify-center"
+        />
+        {/* Phones: one date per line with its name; wider screens: "date to date" */}
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
+          <label className="flex min-w-0 items-center gap-2">
+            <span className="w-9 shrink-0 text-xs font-medium text-stone-500 sm:sr-only">From</span>
+            <DatePicker className="min-w-0 flex-1" value={range[0]} max={range[1]} onChange={v => setRange([v, range[1]])} />
+          </label>
+          <span className="hidden text-sm text-stone-400 sm:block">to</span>
+          <label className="flex min-w-0 items-center gap-2">
+            <span className="w-9 shrink-0 text-xs font-medium text-stone-500 sm:sr-only">To</span>
+            <DatePicker className="min-w-0 flex-1" value={range[1]} min={range[0]} onChange={v => setRange([range[0], v])} />
+          </label>
         </div>
       </Card>
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <StatCard icon={Wallet} label="Total collected" count={total} format={inr} sub={`${list.length} payment${list.length === 1 ? '' : 's'}`} />
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+        <StatCard className="col-span-2 sm:col-span-1" icon={Wallet} label="Total collected" count={total} format={inr} sub={`${list.length} payment${list.length === 1 ? '' : 's'}`} />
         <StatCard icon={BedDouble} label="Rooms" count={sum(p => p.kind === 'room')} format={inr} accent="blue" />
         <StatCard icon={PartyPopper} label="Halls" count={sum(p => p.kind === 'hall')} format={inr} accent="gold" />
       </div>
@@ -80,28 +86,30 @@ export default function Payments() {
       <Card>
         {list.length ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="table-cards w-full text-sm">
               <thead className="border-b border-stone-100 bg-stone-50/60">
                 <tr><th className="th">Date</th><th className="th">Received from</th><th className="th">For</th><th className="th">Method</th><th className="th">By</th><th className="th text-right">Amount</th>{isAdmin && <th className="th" />}</tr>
               </thead>
               <tbody ref={rowsRef} className="divide-y divide-stone-100">
                 {list.map(p => (
                   <tr key={p.id} className="transition hover:bg-gold-50/40">
-                    <td className="td whitespace-nowrap">{fmtDate(p.paid_on)}</td>
-                    <td className="td min-w-56">
+                    <td className="td whitespace-nowrap max-lg:order-3 max-lg:whitespace-normal max-lg:text-xs max-lg:text-stone-500">
+                      {fmtDate(p.paid_on)}<span className="lg:hidden"> · {p.unit || '—'} · {p.method}{p.created_by_name ? ` · by ${p.created_by_name}` : ''}</span>
+                    </td>
+                    <td className="td min-w-56 max-lg:order-1 max-lg:min-w-0">
                       <button className="cursor-pointer text-left font-medium text-ink-900 hover:text-gold-600" onClick={() => nav(p.kind === 'band' ? '/sannai-melam' : `/${p.kind === 'room' ? 'rooms' : 'halls'}?booking=${p.booking_id}`)}>
                         {p.party || `Booking #${p.booking_id}`}
                       </button>
                       {p.note && <p className="text-xs text-stone-500">{p.note}</p>}
                     </td>
-                    <td className="td whitespace-nowrap">
+                    <td className="td whitespace-nowrap max-lg:hidden">
                       <span className="flex items-center gap-1.5">{p.kind === 'room' ? <BedDouble size={14} className="text-sky-600" /> : p.kind === 'band' ? <Drum size={14} className="text-violet-600" /> : <PartyPopper size={14} className="text-gold-600" />}{p.unit || '—'}</span>
                     </td>
-                    <td className="td"><Badge>{p.method}</Badge></td>
-                    <td className="td max-w-36 text-stone-500">{p.created_by_name || '—'}</td>
-                    <td className="td text-right font-semibold whitespace-nowrap text-emerald-700">{inr(p.amount)}</td>
+                    <td className="td max-lg:hidden"><Badge>{p.method}</Badge></td>
+                    <td className="td max-w-36 text-stone-500 max-lg:hidden">{p.created_by_name || '—'}</td>
+                    <td className="td text-right font-semibold whitespace-nowrap text-emerald-700 max-lg:order-2">{inr(p.amount)}</td>
                     {isAdmin && (
-                      <td className="td text-right">
+                      <td className="td text-right max-lg:order-4 max-lg:-my-1 max-lg:self-center">
                         <Button size="icon" variant="danger-soft" title="Delete payment" onClick={() => remove(p)}><Trash2 size={15} /></Button>
                       </td>
                     )}

@@ -1,45 +1,45 @@
-import { all, get, run, today } from '../db.js';
+import { randomInt } from 'node:crypto';
+import { all, get, run } from '../db.js';
 
 /*
- * Bill numbers printed on receipts and WhatsApp messages, e.g. "SMC-R-26-0001":
- * the hall code, the kind (R room, H banquet hall, S supplies, C combo, D decoration, M sannai melam), the
- * year the booking was made (26 = 2026) and a running number for that kind in that year.
- * The number has no day or month in it, so it is never mistaken for a date. The database id
- * stays internal.
+ * Bill numbers printed on receipts, e.g. "SMC-7K4Q9-H". Discreet: it shows no date, no count
+ * and no word, so a customer can't tell from it when it was made or how many bookings there are.
+ * Staff read it like this:
+ *   SMC     the hall's code
+ *   7K4Q9   5 random characters, the bill's own code
+ *   H       the last letter is the kind of bill: H hall, R room, C combined bill (a hall and its
+ *           add-ons), S supplies, D decoration, M Sannai Melam
+ * The random part comes from the system's secure random source and uses only letters and digits
+ * that can't be mixed up when read out or typed (no 0/O, 1/I/L, U): 30 characters, so there are
+ * about 24 million codes for each kind. Every new number is checked against all bills of every
+ * kind and drawn again if it is already used, so no two bills ever have the same number.
+ * Bills numbered before this format keep their number. The database id stays internal.
  */
-const LETTER = { room_bookings: 'R', hall_bookings: 'H', supply_rentals: 'S', event_packages: 'C', decor_plans: 'D', band_bookings: 'M' };
-export const BILL_TABLES = Object.keys(LETTER);
+const LETTER = { hall_bookings: 'H', room_bookings: 'R', event_packages: 'C', supply_rentals: 'S', decor_plans: 'D', band_bookings: 'M' };
+const BILL_TABLES = Object.keys(LETTER);
 
 const CODE = 'SMC';
-const PATTERN = `${CODE}-[A-Z]-[0-9][0-9]-[0-9][0-9][0-9][0-9]*`; // SQLite GLOB for this format
-const yearOf = ymd => String(ymd).slice(2, 4);
-const prefix = (table, yy) => `${CODE}-${LETTER[table]}-${yy}-`;
+const CHARS = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
+const C = '[2-9A-Z]';
+// SQLite GLOB patterns of the numbers kept as they are: this format and the ones before it
+const KEPT_FORMATS = [
+  `${CODE}-${C}${C}${C}${C}${C}-[A-Z]`,
+  `[A-Z]*-[0-9][0-9][0-9][0-9][0-9][0-9]-${C}${C}${C}`,
+  `${CODE}-${C}${C}${C}${C}-${C}${C}${C}${C}`,
+  `${CODE}-[A-Z]-[0-9][0-9]-[0-9][0-9][0-9][0-9]*`,
+  `${CODE}-[0-9][0-9]-[A-Z]-[0-9][0-9][0-9][0-9]*`,
+];
+// Internal counters of the older, counted formats (no longer needed)
+const COUNTERS = String.raw`SELECT key FROM settings WHERE key LIKE '\_bill%' ESCAPE '\'`;
 
-/**
- * The next bill number of a kind for a year (from YYYY-MM-DD, default today). A counter per
- * year and kind is kept in settings (internal "_bill:" keys), so a number stays used even after
- * its booking is deleted: a bill already printed or sent is never given to someone else.
- */
-export function nextBillNo(table, ymd = today()) {
-  const yy = yearOf(ymd);
-  const p = prefix(table, yy);
-  const key = `_bill:${yy}:${LETTER[table]}`;
-  const { n: highest } = get(
-    `SELECT MAX(CAST(substr(bill_no, ?) AS INTEGER)) AS n FROM ${table} WHERE bill_no LIKE ?`,
-    p.length + 1, `${p}%`,
-  );
-  const counted = Number(get('SELECT value FROM settings WHERE key = ?', key)?.value) || 0;
-  const n = Math.max(highest || 0, counted) + 1;
-  run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, String(n));
-  return `${p}${String(n).padStart(4, '0')}`;
-}
+const randomPart = n => Array.from({ length: n }, () => CHARS[randomInt(CHARS.length)]).join('');
+const inUse = billNo => BILL_TABLES.some(t => get(`SELECT 1 FROM ${t} WHERE bill_no = ? LIMIT 1`, billNo));
 
-/** Only this year's and last year's counters are needed (also clears counters of the old format). */
-export function pruneBillCounters() {
-  const yy = Number(yearOf(today()));
-  const keep = new Set([yy, (yy + 99) % 100].map(y => String(y).padStart(2, '0')));
-  for (const { key } of all("SELECT key FROM settings WHERE key LIKE '\\_bill:%' ESCAPE '\\'")) {
-    if (!keep.has(key.split(':')[1])) run('DELETE FROM settings WHERE key = ?', key);
+/** A new bill number for a kind that no bill has. */
+function nextBillNo(table) {
+  for (;;) {
+    const billNo = `${CODE}-${randomPart(5)}-${LETTER[table]}`;
+    if (!inUse(billNo)) return billNo;
   }
 }
 
@@ -49,38 +49,26 @@ export function setBillNo(table, id, billNo = nextBillNo(table)) {
   return billNo;
 }
 
-/**
- * Number rows that have none yet, in the order they were made (rentals of one order share one).
- * The first time this format is used, every older number (the date-based "21-11-26-1R" kind)
- * is cleared first, so all bills are renumbered in order from 0001.
- */
+/** Number rows that have none yet, in the order they were made (rentals of one order share one). */
 export function backfillBillNos() {
-  // Also catches an older backup restored later: any number not in this format means renumber all
-  const oldFormat = BILL_TABLES.some(t => get(`SELECT 1 FROM ${t} WHERE bill_no <> '' AND bill_no NOT GLOB ? LIMIT 1`, PATTERN));
-  if (oldFormat) {
-    for (const table of BILL_TABLES) run(`UPDATE ${table} SET bill_no = ''`);
-    run("DELETE FROM settings WHERE key LIKE '\\_bill:%' ESCAPE '\\'");
-  }
-  // Band Melam was renamed Sannai Melam: its bills move from "B" to "M", keeping their numbers
+  // Only the very first, date-based numbers ("21-11-26-1R") mean renumber all, also when an old
+  // backup is restored later. Numbers in this format or the ones before it are kept.
+  const notKept = KEPT_FORMATS.map(() => 'bill_no NOT GLOB ?').join(' AND ');
+  const oldFormat = BILL_TABLES.some(t => get(`SELECT 1 FROM ${t} WHERE bill_no <> '' AND ${notKept} LIMIT 1`, ...KEPT_FORMATS));
+  if (oldFormat) for (const table of BILL_TABLES) run(`UPDATE ${table} SET bill_no = ''`);
+  // Band Melam was renamed Sannai Melam: its older bills move from "B" to "M", keeping their numbers
   run("UPDATE band_bookings SET bill_no = 'SMC-M-' || substr(bill_no, 7) WHERE bill_no LIKE 'SMC-B-%'");
-  for (const { key, value } of all("SELECT key, value FROM settings WHERE substr(key, 1, 6) = '_bill:' AND key LIKE '%:B'")) {
-    const mKey = `${key.slice(0, -1)}M`;
-    const m = Number(get('SELECT value FROM settings WHERE key = ?', mKey)?.value) || 0;
-    run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', mKey, String(Math.max(m, Number(value) || 0)));
-    run('DELETE FROM settings WHERE key = ?', key);
-  }
   for (const table of BILL_TABLES) {
     const grouped = table === 'supply_rentals';
-    const rows = all(`SELECT id, created_at${grouped ? ', rental_group_id, package_id' : ''} FROM ${table}
+    const rows = all(`SELECT id${grouped ? ', rental_group_id, package_id' : ''} FROM ${table}
                       WHERE bill_no IS NULL OR bill_no = '' ORDER BY created_at, id`);
     const shared = {};
     for (const r of rows) {
       const key = grouped && (r.rental_group_id || (r.package_id ? `pkg${r.package_id}` : null));
       if (key && shared[key]) { setBillNo(table, r.id, shared[key]); continue; }
-      const ymd = /^\d{4}-\d{2}-\d{2}/.test(String(r.created_at)) ? String(r.created_at).slice(0, 10) : today();
-      const billNo = setBillNo(table, r.id, nextBillNo(table, ymd));
+      const billNo = setBillNo(table, r.id);
       if (key) shared[key] = billNo;
     }
   }
-  pruneBillCounters();
+  for (const { key } of all(COUNTERS)) run('DELETE FROM settings WHERE key = ?', key);
 }

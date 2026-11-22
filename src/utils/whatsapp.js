@@ -52,8 +52,9 @@ function property(settings) {
 // "Full day · 7:00 AM to 3:00 AM (next day)"
 const timing = (slot, settings, hall) => [slotName(slot), slotTime(slot, settings, hall)].filter(Boolean).join(' · ');
 const money = n => Math.max(0, Number(n) || 0);
-const lastPayment = payments => (Array.isArray(payments) && payments.length ? payments[payments.length - 1] : null);
 const bullets = rows => rows.filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `• ${k}: ${v}`).join('\n');
+// An open area (rooftop, parking, ground) is a "Venue"; an indoor hall is a "Hall"
+const venueWord = kind => (kind === 'area' ? 'Venue' : 'Hall');
 
 /**
  * Put a message together. `en` and `te` are the message paragraphs; `details` and `bill` are
@@ -71,191 +72,263 @@ function compose(settings, { name, en, te, detailsTitle = 'Booking details', det
   return parts.join('\n\n');
 }
 
-/** The money lines and the payment sentences, in both languages. */
-function paymentStatus({ total, paid, when }) {
+/** Total, paid and balance rows. */
+function amounts(total, paid) {
   const balance = money(total - paid);
-  const [whenEn, whenTe] = WHEN[when] || WHEN.soon;
-  return {
-    balance,
-    bill: [
-      ['Total', inr(total)],
-      ['Paid', inr(paid)],
-      ['Balance due', balance > 0 ? inr(balance) : '₹0 (fully paid ✅)'],
-    ],
-    en: balance > 0
-      ? `⚠️ *Payment due: ${inr(balance)}*\nKindly pay the balance ${whenEn}.`
-      : '✅ Your payment is fully completed. Thank you!',
-    te: balance > 0
-      ? `⚠️ *చెల్లించవలసిన బకాయి: ${inr(balance)}*\nదయచేసి మిగిలిన మొత్తాన్ని ${whenTe} చెల్లించండి.`
-      : '✅ మీ చెల్లింపు పూర్తిగా అయిపోయింది. ధన్యవాదాలు!',
-  };
+  return [
+    ['Total', inr(total)],
+    ['Paid', inr(Math.min(total, money(paid)))],
+    ['Balance', balance > 0 ? inr(balance) : '₹0 (fully paid ✅)'],
+  ];
 }
 
-/** "Payment received" sentences for the latest payment, or full-payment thanks when nothing is due. */
-function paymentReceived(payments, balance) {
-  const last = lastPayment(payments);
-  if (!last) return { en: 'We have not received a payment for this booking yet.', te: 'ఈ బుకింగ్‌కు ఇంకా ఎలాంటి చెల్లింపు అందలేదు.' };
-  const how = `${inr(last.amount)} (${last.method || 'Cash'}, ${fmtDate(last.paid_on)})`;
+/**
+ * The payment message: a polite reminder while money is due, and a "payment completed" note
+ * once everything is paid. Opening it again after a payment shows the updated message.
+ */
+function paymentNote(total, paid, when) {
+  const balance = money(total - paid);
+  const [whenEn, whenTe] = WHEN[when] || WHEN.soon;
   return balance > 0
-    ? { en: `💳 We have received your payment of *${how}*. Thank you!`, te: `💳 మీ చెల్లింపు *${how}* అందింది. ధన్యవాదాలు!` }
+    ? {
+        en: `This is a gentle reminder that *${inr(balance)}* is still due for your booking.\nKindly pay the remaining amount ${whenEn}. Thank you!`,
+        te: `మీ బుకింగ్‌కు *${inr(balance)}* ఇంకా చెల్లించవలసి ఉందని గుర్తు చేస్తున్నాము.\nదయచేసి మిగిలిన మొత్తాన్ని ${whenTe} చెల్లించండి. ధన్యవాదాలు!`,
+      }
     : {
-        en: `🎉 We have received your payment of *${how}*.\nYou have successfully completed the full payment. Thank you!`,
-        te: `🎉 మీ చెల్లింపు *${how}* అందింది.\nమీరు పూర్తి చెల్లింపును విజయవంతంగా పూర్తి చేశారు. ధన్యవాదాలు!`,
+        en: `✅ We have received your full payment of *${inr(total)}*. Your payment is complete. Thank you!`,
+        te: `✅ మీ పూర్తి చెల్లింపు *${inr(total)}* అందింది. మీ చెల్లింపు పూర్తయింది. ధన్యవాదాలు!`,
       };
 }
 
 /**
+ * The messages that fit a booking right now, in order. Greeting while it is booked; the payment
+ * message whenever there is an amount (a reminder while due, "payment completed" once paid);
+ * the thank-you only after the event is over or the guest has checked out. A cancelled booking
+ * has none.
+ */
+export function messageTypes(kind, b) {
+  if (!b) return [];
+  const make = ({ cancelled, over, total, paid, payable = true }) => {
+    if (cancelled) return [];
+    const due = money(total - paid) > 0;
+    return [
+      ...(over ? [] : [{ value: 'booking', label: 'Greeting' }]),
+      ...(payable && Number(total) > 0 ? [{ value: 'payment', label: due ? 'Payment reminder' : 'Payment completed' }] : []),
+      ...(over ? [{ value: 'thank_you', label: 'Thank you' }] : []),
+    ];
+  };
+  if (kind === 'room') {
+    return make({ cancelled: b.status === 'cancelled', over: b.status === 'checked_out', total: Number(b.total) || 0, paid: Number(b.paid) || 0 });
+  }
+  if (kind === 'hall') {
+    return make({ cancelled: b.status === 'cancelled', over: b.status === 'completed', total: Number(b.total) || 0, paid: Number(b.paid) || 0 });
+  }
+  if (kind === 'package') {
+    const total = Number(b.grand_total ?? b.total_amount) || 0;
+    const rooms = (b.rooms || []).filter(r => r.status !== 'cancelled');
+    // Over when its hall's event is completed; a combo without a hall, when every room has checked out
+    const over = b.hall ? b.hall.status === 'completed' : rooms.length > 0 && rooms.every(r => r.status === 'checked_out');
+    return make({ cancelled: b.status === 'cancelled' || b.hall?.status === 'cancelled', over, total, paid: total - money(b.balance ?? total) });
+  }
+  if (kind === 'band') {
+    const types = make({
+      cancelled: b.status === 'cancelled', over: b.status === 'done', total: Number(b.amount) || 0, paid: Number(b.paid) || 0,
+      payable: !b.package_id, // paid on the hall's combined bill
+    });
+    return b.status === 'cancelled' ? [] : [...types, { value: 'band_team', label: 'Timing to sannai team' }];
+  }
+  return [];
+}
+
+/**
  * Room booking messages.
- * type: 'booking' (greeting / confirmation, or welcome once checked in), 'payment', 'check_out' (thank you)
+ * type: 'booking' (greeting, or welcome once checked in), 'payment', 'thank_you' (after check-out)
  */
 export function buildRoomMessage(b, settings, type = 'booking') {
   const n = nights(b.check_in, b.check_out);
   const t = roomTimes(settings, b);
   const checkedIn = b.status === 'checked_in';
-  const when = type === 'check_out' ? 'soon' : checkedIn ? 'check_out' : 'check_in';
-  const status = paymentStatus({ total: Number(b.total) || 0, paid: Number(b.paid) || 0, when });
+  const total = Number(b.total) || 0;
+  const paid = Number(b.paid) || 0;
   const roomDisc = Number(b.discount) || 0;
-  if (roomDisc > 0) status.bill = [['Room rent', inr((Number(b.total) || 0) + roomDisc)], ['Discount', `- ${inr(roomDisc)}`], ...status.bill];
+  const bill = [...(roomDisc > 0 ? [['Room rent', inr(total + roomDisc)], ['Discount', `- ${inr(roomDisc)}`]] : []), ...amounts(total, paid)];
   const details = [
-    ['Bill No', b.bill_no],
     ['Room', b.room_name],
     ['Check-in', `${fmtDate(b.check_in)}, ${t.checkIn}`],
     ['Check-out', `${fmtDate(b.check_out)}, ${t.checkOut} (${n} night${n === 1 ? '' : 's'})`],
-    ['Guests', b.guests],
-    ...(b.checked_in_at ? [['Checked in at', fmtDateTime(b.checked_in_at)]] : []),
-    ...(b.checked_out_at ? [['Checked out at', fmtDateTime(b.checked_out_at)]] : []),
+    ...(Number(b.guests) ? [['Guests', b.guests]] : []),
   ];
 
   if (type === 'payment') {
-    const got = paymentReceived(b.payments, status.balance);
-    return compose(settings, {
-      name: b.guest_name, details, bill: status.bill,
-      en: [got.en, status.balance > 0 && status.en],
-      te: [got.te, status.balance > 0 && status.te],
-    });
+    const note = paymentNote(total, paid, checkedIn ? 'check_out' : b.status === 'checked_out' ? 'soon' : 'check_in');
+    return compose(settings, { name: b.guest_name, details, bill, en: [note.en], te: [note.te] });
   }
 
-  if (type === 'check_out') {
+  if (type === 'thank_you') {
     return compose(settings, {
-      name: b.guest_name, detailsTitle: 'Stay details', details, bill: status.bill,
-      en: ['Thank you for staying with us! We hope you had a comfortable stay. Please visit us again. 🙏', status.en],
-      te: ['మా వద్ద బస చేసినందుకు ధన్యవాదాలు! మీ బస సౌకర్యంగా గడిచిందని ఆశిస్తున్నాము. దయచేసి మళ్ళీ రండి. 🙏', status.te],
+      name: b.guest_name, detailsTitle: 'Your stay', details,
+      en: ['Thank you for staying with us! We hope you had a comfortable stay. We look forward to welcoming you again. 🙏'],
+      te: ['మా వద్ద బస చేసినందుకు ధన్యవాదాలు! మీ బస సౌకర్యంగా గడిచిందని ఆశిస్తున్నాము. మళ్ళీ మిమ్మల్ని స్వాగతించడానికి ఎదురుచూస్తున్నాము. 🙏'],
     });
   }
 
   return compose(settings, {
-    name: b.guest_name, details, bill: status.bill,
-    en: [
-      checkedIn
-        ? `Welcome! You have checked in to *${b.room_name}*. We wish you a comfortable stay.`
-        : `Thank you for booking with us. Your room booking is *confirmed*.\nCheck-in is from ${t.checkIn} and check-out by ${t.checkOut}.`,
-      status.en,
-    ],
-    te: [
-      checkedIn
-        ? `స్వాగతం! మీరు *${b.room_name}* లో చెక్-ఇన్ అయ్యారు. మీ బస సౌకర్యంగా ఉండాలని కోరుకుంటున్నాము.`
-        : `మాతో బుక్ చేసినందుకు ధన్యవాదాలు. మీ గది బుకింగ్ *నిర్ధారించబడింది*.\nచెక్-ఇన్ ${t.checkIn} నుండి, చెక్-అవుట్ ${t.checkOut} లోపు.`,
-      status.te,
-    ],
+    name: b.guest_name, details, bill,
+    en: [checkedIn
+      ? `Welcome! You have checked in to *${b.room_name}*. We wish you a comfortable stay.`
+      : `Thank you for booking with us. Your room booking is *confirmed*.\nCheck-in is from ${t.checkIn} and check-out by ${t.checkOut}.`],
+    te: [checkedIn
+      ? `స్వాగతం! మీరు *${b.room_name}* లో చెక్-ఇన్ అయ్యారు. మీ బస సౌకర్యంగా ఉండాలని కోరుకుంటున్నాము.`
+      : `మాతో బుక్ చేసినందుకు ధన్యవాదాలు. మీ గది బుకింగ్ *నిర్ధారించబడింది*.\nచెక్-ఇన్ ${t.checkIn} నుండి, చెక్-అవుట్ ${t.checkOut} లోపు.`],
   });
 }
 
+// Said on a hall's greeting until the meter reading is on the bill (indoor halls only)
+const POWER_NOTE = {
+  en: '⚡ Electricity charges, as per the meter reading, are added to the bill after the event.',
+  te: '⚡ మీటర్ రీడింగ్ ప్రకారం విద్యుత్ ఛార్జీలు కార్యక్రమం తర్వాత బిల్లులో చేర్చబడతాయి.',
+};
+
 /**
- * Hall booking messages.
- * type: 'booking' (greeting / confirmation), 'payment', 'completed' (thank you after the event)
+ * Hall (or open area) booking messages.
+ * type: 'booking' (greeting), 'payment', 'thank_you' (after the event)
  */
 export function buildHallMessage(b, settings, type = 'booking') {
   const event = b.event_type || 'function';
-  const status = paymentStatus({ total: Number(b.total) || 0, paid: Number(b.paid) || 0, when: type === 'completed' ? 'soon' : 'event' });
+  const total = Number(b.total) || 0;
+  const paid = Number(b.paid) || 0;
   const details = [
-    ['Bill No', b.bill_no],
-    ['Hall', b.hall_name],
+    [venueWord(b.hall_kind), b.hall_name],
     ['Event', b.event_type || 'Function'],
     ['Date', fmtDate(b.event_date)],
     ['Timing', timing(b.slot, settings, b)],
-    ...(b.guests ? [['Guests', b.guests]] : []),
+    ...(Number(b.guests) ? [['Guests', b.guests]] : []),
   ];
   const hallDisc = Number(b.discount) || 0;
   const bill = [
     // with a discount: the hall price and the discount; otherwise the rent line only when power
     // or generator were added on top of it
     ...(hallDisc > 0
-      ? [['Hall rent', inr((Number(b.rent) || 0) + hallDisc)], ['Discount', `- ${inr(hallDisc)}`]]
-      : Number(b.power_amount) > 0 || Number(b.generator_amount) > 0 ? [['Hall rent', inr(b.rent || b.total)]] : []),
-    ...(Number(b.power_amount) > 0 ? [['Power', `${inr(b.power_amount)} (${b.power_units} units × ₹${b.power_rate || 15})`]] : []),
+      ? [[`${venueWord(b.hall_kind)} rent`, inr((Number(b.rent) || 0) + hallDisc)], ['Discount', `- ${inr(hallDisc)}`]]
+      : Number(b.power_amount) > 0 || Number(b.generator_amount) > 0 ? [[`${venueWord(b.hall_kind)} rent`, inr(b.rent || b.total)]] : []),
+    ...(Number(b.power_amount) > 0 ? [['Electricity', `${inr(b.power_amount)} (${b.power_units} units × ₹${b.power_rate || 15})`]] : []),
     ...(Number(b.generator_amount) > 0 ? [['Generator', `${inr(b.generator_amount)} (${generatorText(b)})`]] : []),
-    ...status.bill,
+    ...amounts(total, paid),
   ];
 
   if (type === 'payment') {
-    const got = paymentReceived(b.payments, status.balance);
+    const note = paymentNote(total, paid, b.status === 'completed' ? 'soon' : 'event');
+    return compose(settings, { name: b.customer_name, details, bill, en: [note.en], te: [note.te] });
+  }
+
+  if (type === 'thank_you') {
     return compose(settings, {
-      name: b.customer_name, details, bill,
-      en: [got.en, status.balance > 0 && status.en],
-      te: [got.te, status.balance > 0 && status.te],
+      name: b.customer_name, detailsTitle: 'Your event', details: details.filter(([k]) => k !== 'Timing'),
+      en: [`Thank you for celebrating your ${event} with us at *${b.hall_name}*! It was our pleasure to host you and your guests. We look forward to serving you again. 🙏`],
+      te: [`మీ వేడుకను *${b.hall_name}* లో మాతో జరుపుకున్నందుకు ధన్యవాదాలు! మీకు మరియు మీ అతిథులకు ఆతిథ్యం ఇవ్వడం మాకు ఎంతో సంతోషం. మళ్ళీ మీకు సేవ చేయడానికి ఎదురుచూస్తున్నాము. 🙏`],
     });
   }
 
-  if (type === 'completed') {
-    return compose(settings, {
-      name: b.customer_name, detailsTitle: 'Event details', details, bill,
-      en: [`Thank you for celebrating your ${event} with us! It was our pleasure to host you and your guests. 🙏`, status.en],
-      te: ['మీ వేడుకను మాతో జరుపుకున్నందుకు ధన్యవాదాలు! మీకు మరియు మీ అతిథులకు ఆతిథ్యం ఇవ్వడం మాకు ఎంతో సంతోషం. 🙏', status.te],
-    });
-  }
-
+  const powerNote = b.hall_kind !== 'area' && !(Number(b.power_amount) > 0);
+  const tentative = b.status === 'tentative';
   return compose(settings, {
     name: b.customer_name, details, bill,
     en: [
-      `Thank you for choosing us for your ${event}. Your hall booking is *confirmed*. 🎉`,
-      status.en,
-      '⚡ Power and generator charges are added to the bill after the event.',
+      tentative
+        ? `Thank you for choosing *${b.hall_name}* for your ${event}. We have noted your booking and will confirm it shortly.`
+        : `Thank you for booking *${b.hall_name}* for your ${event}. Your booking is *confirmed*. 🎉`,
+      powerNote && POWER_NOTE.en,
     ],
     te: [
-      'మీ వేడుక కోసం మమ్మల్ని ఎంచుకున్నందుకు ధన్యవాదాలు. మీ హాల్ బుకింగ్ *నిర్ధారించబడింది*. 🎉',
-      status.te,
-      '⚡ విద్యుత్ మరియు జనరేటర్ ఛార్జీలు కార్యక్రమం తర్వాత బిల్లులో చేర్చబడతాయి.',
+      tentative
+        ? `మీ వేడుక కోసం *${b.hall_name}* ను ఎంచుకున్నందుకు ధన్యవాదాలు. మీ బుకింగ్‌ను నమోదు చేసుకున్నాము, త్వరలో నిర్ధారిస్తాము.`
+        : `మీ వేడుక కోసం *${b.hall_name}* ను బుక్ చేసినందుకు ధన్యవాదాలు. మీ బుకింగ్ *నిర్ధారించబడింది*. 🎉`,
+      powerNote && POWER_NOTE.te,
     ],
   });
 }
 
 /**
- * Combo (hall + rooms + supplies on one bill).
- * type: 'booking' (greeting / confirmation) or 'payment'
+ * One bill holding a hall and the customer's add-ons. Only what the customer actually booked is
+ * named: a hall with rooms mentions the hall and the rooms, and nothing else.
+ * type: 'booking' (greeting), 'payment', 'thank_you' (after the event)
  */
 export function buildPackageMessage(pkg, settings, type = 'booking') {
   const total = Number(pkg.grand_total ?? pkg.total_amount) || 0;
   const balance = money(pkg.balance ?? total - (Number(pkg.advance_paid) || 0));
-  const status = paymentStatus({ total, paid: total - balance, when: 'event' });
-  const details = [
-    ['Bill No', pkg.bill_no],
+  const paid = total - balance;
+  const event = pkg.event_type || 'function';
+  const hall = pkg.hall && pkg.hall.status !== 'cancelled' ? pkg.hall : null;
+  const rooms = (pkg.rooms || []).filter(r => r.status !== 'cancelled');
+  const supplies = pkg.supplies || [];
+  const decor = (pkg.decor || []).filter(p => p.status !== 'cancelled');
+  const band = (pkg.band || []).filter(b => b.status !== 'cancelled');
+
+  const roomsTotal = rooms.reduce((s, r) => s + (Number(r.total) || 0), 0);
+  const firstIn = rooms.map(r => r.check_in).sort()[0];
+  const lastOut = rooms.map(r => r.check_out).sort().pop();
+  const decorAreas = [...new Set(decor.flatMap(p => (p.items || []).map(i => i.area)).filter(Boolean))];
+  const decorTotal = decor.reduce((s, p) => s + (Number(p.total) || 0), 0);
+  const bandTotal = band.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+  const bandTimes = band.map(b => b.timing).filter(Boolean).join(', ');
+
+  // What was booked: one line each, only for the things on this bill (prices left out of the thank-you)
+  const booked = withPrice => {
+    const price = n => (withPrice ? ` — ${inr(n)}` : '');
+    return [
+      ...(hall ? [[venueWord(hall.hall_kind), `${hall.hall_name}${price(pkg.hall_amount || hall.rent)}`]] : []),
+      ...(rooms.length ? [[rooms.length > 1 ? `Rooms (${rooms.length})` : 'Room',
+        `${rooms.map(r => r.room_name).join(', ')} · ${fmtDate(firstIn)} to ${fmtDate(lastOut)}${price(roomsTotal)}`]] : []),
+      ...(supplies.length ? [['Supplies', `${supplies.length} item${supplies.length > 1 ? 's' : ''}${price(pkg.supplies_amount)}`]] : []),
+      ...(decor.length ? [['Decoration', `${decorAreas.join(', ') || 'As planned'}${price(decorTotal)}`]] : []),
+      ...(band.length ? [['Sannai Melam', `${bandTimes || 'Booked'}${price(bandTotal)}`]] : []),
+    ];
+  };
+  const head = [
     ['Event', pkg.event_type || 'Function'],
-    ['Date', `${fmtDate(pkg.event_date)} (${timing(pkg.slot, settings, pkg.hall)})`],
-    ...(pkg.hall ? [['Hall', `${pkg.hall.hall_name} — ${inr(pkg.hall_amount || pkg.hall.rent)}`]] : []),
-    ...(pkg.rooms?.length ? [['Rooms', `${pkg.rooms.map(r => r.room_name).join(', ')} — ${inr(pkg.rooms_amount)}`]] : []),
-    ...(pkg.supplies?.length ? [['Supplies', `${pkg.supplies.length} item${pkg.supplies.length > 1 ? 's' : ''} — ${inr(pkg.supplies_amount)}`]] : []),
-    ...(Number(pkg.band_amount) > 0 ? [['Sannai Melam', `${(pkg.band || []).map(b => b.timing).filter(Boolean).join(', ') || 'Booked'} — ${inr(pkg.band_amount)}`]] : []),
-    ...(Number(pkg.decor_amount) > 0 ? [['Decoration', `${[...new Set((pkg.decor || []).flatMap(p => (p.items || []).map(i => i.area)))].join(', ')} — ${inr(pkg.decor_amount)}`]] : []),
+    ['Date', fmtDate(pkg.event_date)],
+    ...(hall ? [['Timing', timing(pkg.slot, settings, hall)]] : []),
   ];
+  const details = [...head, ...booked(true)];
+  const power = hall ? Number(hall.power_amount) || 0 : 0;
+  const generator = hall ? Number(hall.generator_amount) || 0 : 0;
   const bill = [
-    ...(Number(pkg.extras_amount) > 0 ? [['Power & generator', inr(pkg.extras_amount)]] : []),
-    ...status.bill,
+    ...(power > 0 ? [['Electricity', inr(power)]] : []),
+    ...(generator > 0 ? [['Generator', inr(generator)]] : []),
+    ...amounts(total, paid),
   ];
 
   if (type === 'payment') {
-    const got = paymentReceived(pkg.payments, status.balance);
+    const note = paymentNote(total, paid, hall?.status === 'completed' ? 'soon' : 'event');
+    return compose(settings, { name: pkg.customer_name, details, bill, en: [note.en], te: [note.te] });
+  }
+
+  if (type === 'thank_you') {
     return compose(settings, {
-      name: pkg.customer_name, detailsTitle: 'Combo details', details, bill,
-      en: [got.en, status.balance > 0 && status.en],
-      te: [got.te, status.balance > 0 && status.te],
+      name: pkg.customer_name, detailsTitle: 'Your event',
+      details: [...head.filter(([k]) => k !== 'Timing'), ...booked(false)],
+      en: [`Thank you for celebrating your ${event} with us! It was our pleasure to host you and your guests. We look forward to serving you again. 🙏`],
+      te: ['మీ వేడుకను మాతో జరుపుకున్నందుకు ధన్యవాదాలు! మీకు మరియు మీ అతిథులకు ఆతిథ్యం ఇవ్వడం మాకు ఎంతో సంతోషం. మళ్ళీ మీకు సేవ చేయడానికి ఎదురుచూస్తున్నాము. 🙏'],
     });
   }
 
+  const powerNote = hall && hall.hall_kind !== 'area' && !(power > 0);
   return compose(settings, {
-    name: pkg.customer_name, detailsTitle: 'Combo details', details, bill,
-    en: [`Thank you for choosing us for your ${pkg.event_type || 'function'}. Your combo booking (hall, rooms and supplies on one bill) is *confirmed*. 🎉`, status.en],
-    te: ['మీ వేడుక కోసం మమ్మల్ని ఎంచుకున్నందుకు ధన్యవాదాలు. మీ కాంబో బుకింగ్ (హాల్, గదులు మరియు సామాగ్రి ఒకే బిల్లులో) *నిర్ధారించబడింది*. 🎉', status.te],
+    name: pkg.customer_name, details, bill,
+    en: [`Thank you for booking with us for your ${event}. Your booking is *confirmed*. 🎉`, powerNote && POWER_NOTE.en],
+    te: ['మీ వేడుక కోసం మాతో బుక్ చేసినందుకు ధన్యవాదాలు. మీ బుకింగ్ *నిర్ధారించబడింది*. 🎉', powerNote && POWER_NOTE.te],
   });
+}
+
+/** One line about the balance on a rental slip, only while something is due. */
+function dueLine(total, paid, when) {
+  const balance = money(total - paid);
+  if (!(balance > 0)) return { en: '', te: '' };
+  const [whenEn, whenTe] = WHEN[when] || WHEN.soon;
+  return {
+    en: `Kindly pay the balance of *${inr(balance)}* ${whenEn}.`,
+    te: `దయచేసి మిగిలిన *${inr(balance)}* ను ${whenTe} చెల్లించండి.`,
+  };
 }
 
 /** A single supply rented to a customer, or (without a customer) a stock in/out slip. */
@@ -266,20 +339,20 @@ export function buildSupplyMessage(item, move, settings) {
   if (move?.customer_name) {
     const returned = move.status === 'returned';
     const total = Number(move.total_rent) || 0;
-    const status = paymentStatus({ total, paid: Math.min(total, Number(move.advance_amount) || 0), when: returned ? 'soon' : 'return' });
+    const paid = Math.min(total, Number(move.advance_amount) || 0);
+    const due = dueLine(total, paid, returned ? 'soon' : 'return');
     return compose(settings, {
       name: move.customer_name, detailsTitle: 'Rental details',
       details: [
-        ['Bill No', move.bill_no],
         ['Item', `${name} × ${move.quantity} ${unit}`],
         ['Rate', `₹${move.rent_rate || 0} per ${unit}`],
         ['Rented on', fmtDate(move.rent_date)],
         ['Return', returned ? `Returned on ${fmtDate(move.return_date)} ✅` : move.expected_return_date ? fmtDate(move.expected_return_date) : 'After the function'],
         ...(move.damage_notes ? [['Condition', move.damage_notes]] : []),
       ],
-      bill: status.bill,
-      en: [returned ? 'Thank you for returning the items. 🙏' : 'Here are the details of the items you have rented from us.', status.en],
-      te: [returned ? 'సామాగ్రిని తిరిగి ఇచ్చినందుకు ధన్యవాదాలు. 🙏' : 'మా వద్ద నుండి మీరు అద్దెకు తీసుకున్న సామాగ్రి వివరాలు ఇవి.', status.te],
+      bill: amounts(total, paid),
+      en: [returned ? 'Thank you for returning the items. 🙏' : 'Here are the details of the items you have rented from us.', due.en],
+      te: [returned ? 'సామాగ్రిని తిరిగి ఇచ్చినందుకు ధన్యవాదాలు. 🙏' : 'మా వద్ద నుండి మీరు అద్దెకు తీసుకున్న సామాగ్రి వివరాలు ఇవి.', due.te],
     });
   }
 
@@ -304,8 +377,8 @@ export function buildSupplyMessage(item, move, settings) {
 export function buildBulkRentalMessage(order, settings) {
   const items = order.items || order.rentals || [];
   const total = Number(order.total_rent || order.total_amount) || 0;
-  const advance = Number(order.advance_amount || order.advance_paid) || 0;
-  const status = paymentStatus({ total, paid: Math.min(total, advance), when: 'return' });
+  const advance = Math.min(total, Number(order.advance_amount || order.advance_paid) || 0);
+  const due = dueLine(total, advance, 'return');
   const list = items.map((it, i) => {
     const unit = it.supply_unit || it.unit || 'pcs';
     return `${i + 1}. ${it.supply_name || it.name} — ${it.quantity} ${unit} × ₹${it.rent_rate} = ${inr(it.quantity * it.rent_rate)}`;
@@ -314,7 +387,6 @@ export function buildBulkRentalMessage(order, settings) {
   return compose(settings, {
     name: order.customer_name, detailsTitle: `Items rented (${items.length})`,
     details: [
-      ['Bill No', order.bill_no || order.rentals?.[0]?.bill_no],
       ...(order.event_name ? [['Function', order.event_name]] : []),
       ['Dispatched on', fmtDate(order.rent_date || today())],
       ...(order.expected_return_date ? [['Return by', fmtDate(order.expected_return_date)]] : []),
@@ -322,10 +394,10 @@ export function buildBulkRentalMessage(order, settings) {
     bill: [
       ...(discount > 0 ? [['Items', inr(total + discount)], ['Discount (full set)', `- ${inr(discount)}`]] : []),
       ...(discount < 0 ? [['Items', inr(total + discount)], ['Full set price', inr(total)]] : []),
-      ...status.bill,
+      ...amounts(total, advance),
     ],
-    en: [`Here are the catering items sent for your function:\n${list}`, status.en],
-    te: ['మీ వేడుక కోసం పంపిన సామాగ్రి వివరాలు పైన ఇవ్వబడ్డాయి.', status.te],
+    en: [`Here are the items sent for your function:\n${list}`, due.en],
+    te: ['మీ వేడుక కోసం పంపిన సామాగ్రి వివరాలు పైన ఇవ్వబడ్డాయి.', due.te],
   });
 }
 
@@ -345,7 +417,6 @@ export function buildDecorMessage(plan, settings) {
   return compose(settings, {
     name: plan.customer_name, detailsTitle: 'Decoration details',
     details: [
-      ['Bill No', plan.bill_no],
       ...(plan.event_name ? [['Function', plan.event_name]] : []),
       ['Event date', fmtDate(plan.event_date)],
       ...(plan.hall_name ? [['Hall', plan.hall_name]] : []),
@@ -359,23 +430,40 @@ export function buildDecorMessage(plan, settings) {
   });
 }
 
-/** Sannai Melam booked for an event (a performance, not an item). */
-export function buildBandMessage(b, settings) {
-  const status = paymentStatus({ total: Number(b.amount) || 0, paid: Number(b.paid) || 0, when: b.status === 'done' ? 'soon' : 'event' });
-  const done = b.status === 'done';
+/**
+ * Sannai Melam booked for an event (a performance, not an item).
+ * type: 'booking' (greeting), 'payment', 'thank_you' (after the programme)
+ */
+export function buildBandMessage(b, settings, type = 'booking') {
+  const total = Number(b.amount) || 0;
+  const paid = Number(b.paid) || 0;
+  // On a hall's combined bill its money is shown and paid there
+  const onHallBill = !!b.package_id;
+  const details = [
+    ['Event date', fmtDate(b.event_date)],
+    ...(b.timing ? [['Timing', b.timing]] : []),
+    ...(Number(b.players) ? [['Players', b.players]] : []),
+    ...(b.hall_name ? [['Venue', b.hall_name]] : []),
+  ];
+  const bill = onHallBill ? [] : amounts(total, paid);
+
+  if (type === 'payment') {
+    const note = paymentNote(total, paid, b.status === 'done' ? 'soon' : 'event');
+    return compose(settings, { name: b.customer_name, detailsTitle: 'Sannai Melam details', details, bill, en: [note.en], te: [note.te] });
+  }
+
+  if (type === 'thank_you') {
+    return compose(settings, {
+      name: b.customer_name, detailsTitle: 'Sannai Melam details', details,
+      en: ['Thank you for choosing our Sannai Melam for your function! We hope you and your guests enjoyed it. 🙏'],
+      te: ['మీ వేడుకకు మా సన్నాయి మేళాన్ని ఎంచుకున్నందుకు ధన్యవాదాలు! మీకు మరియు మీ అతిథులకు నచ్చిందని ఆశిస్తున్నాము. 🙏'],
+    });
+  }
+
   return compose(settings, {
-    name: b.customer_name, detailsTitle: 'Sannai Melam details',
-    details: [
-      ['Bill No', b.bill_no],
-      ['Event date', fmtDate(b.event_date)],
-      ...(b.timing ? [['Timing', b.timing]] : []),
-      ...(b.team ? [['Team', b.team]] : []),
-      ...(Number(b.players) ? [['Players', b.players]] : []),
-      ...(b.hall_name ? [['Hall', b.hall_name]] : []),
-    ],
-    bill: status.bill,
-    en: [done ? 'Thank you for choosing our Sannai Melam for your function! 🙏' : 'Your Sannai Melam booking is *confirmed*. 🎺', status.en],
-    te: [done ? 'మీ వేడుకకు మా సన్నాయి మేళాన్ని ఎంచుకున్నందుకు ధన్యవాదాలు! 🙏' : 'మీ సన్నాయి మేళం బుకింగ్ *నిర్ధారించబడింది*. 🎺', status.te],
+    name: b.customer_name, detailsTitle: 'Sannai Melam details', details, bill,
+    en: ['Thank you for booking our Sannai Melam. Your booking is *confirmed*. 🎺', onHallBill && 'Its amount is included in your hall bill.'],
+    te: ['మా సన్నాయి మేళాన్ని బుక్ చేసినందుకు ధన్యవాదాలు. మీ బుకింగ్ *నిర్ధారించబడింది*. 🎺', onHallBill && 'దీని మొత్తం మీ హాల్ బిల్లులో చేర్చబడింది.'],
   });
 }
 

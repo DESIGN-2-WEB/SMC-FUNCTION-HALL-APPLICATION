@@ -14,7 +14,7 @@ import { makePhoto } from '../imageResize.js';
  * price list; the server works out every amount again when a plan is saved.
  */
 
-export const DEFAULT_DECOR_AREAS = ['Stage', 'Entrance', 'Walkway', 'Photo booths', 'Main outdoor staircase'];
+const DEFAULT_DECOR_AREAS = ['Stage', 'Entrance', 'Walkway', 'Photo booths', 'Main outdoor staircase'];
 
 export const decorAreas = settings =>
   (settings.decor_areas ? settings.decor_areas.split(',') : DEFAULT_DECOR_AREAS).map(s => s.trim()).filter(Boolean);
@@ -101,11 +101,11 @@ export default function DecorationsTab({ isAdmin, settings, reloadSettings, hall
                     ))}
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="flex w-full flex-wrap items-baseline justify-between gap-x-3 sm:block sm:w-auto sm:text-right">
                   <p className="font-display text-lg font-semibold text-ink-900">{inr(p.total)}</p>
                   {n(p.discount) > 0 && <p className="text-[11px] text-stone-400">after {inr(p.discount)} discount</p>}
                 </div>
-                <div className="flex w-full flex-wrap justify-end gap-1.5 sm:w-auto">
+                <div className="row-actions flex w-full flex-wrap justify-end gap-1.5 sm:w-auto">
                   {(p.status === 'planned' || isAdmin) && (
                     <Button size="sm" variant="outline" icon={Pencil} onClick={() => setEditing(p)}>Edit</Button>
                   )}
@@ -159,9 +159,9 @@ const newLine = (area, item) => ({
   rate: item ? n(item.price) : 0,
 });
 
-export const decorLineAmount = l => Math.round(n(l.qty) * n(l.rate) * 100) / 100;
+const decorLineAmount = l => Math.round(n(l.qty) * n(l.rate) * 100) / 100;
 export const decorSubtotal = lines => lines.reduce((s, l) => s + (l.name ? decorLineAmount(l) : 0), 0);
-export const toDecorLines = items => (items || []).map(l => ({ ...newLine(l.area), ...l }));
+const toDecorLines = items => (items || []).map(l => ({ ...newLine(l.area), ...l }));
 /** The lines as sent to the server (empty rows dropped; the server prices them again). */
 export const decorItemsPayload = lines => lines.filter(l => l.name.trim())
   .map(({ area, name, unit, qty, rate }) => ({ area, name: name.trim(), unit, qty: n(qty), rate: n(rate) }));
@@ -304,7 +304,7 @@ export function DecorLinesEditor({ areas, priceItems, lines, setLines }) {
 }
 
 /** The large photo of a price-list design, fetched when opened. */
-export function DecorPhotoViewer({ item, onClose }) {
+function DecorPhotoViewer({ item, onClose }) {
   const big = useApi(`/decorations/items/${item.id}/photo`);
   return (
     <Modal size="lg" onClose={onClose} title={item.name} subtitle={`${item.area} · ${inr(item.price)}`}
@@ -591,7 +591,7 @@ function PriceListModal({ areas, items, onChanged, reloadSettings, onClose }) {
 
 /* ---------- Print ---------- */
 
-export function printDecorPlan(plan, settings) {
+function printDecorPlan(plan, settings) {
   const propName = settings?.property_name || 'SMC Function Hall (A/C)';
   const bannerName = settings?.banner_name || '';
   const tagline = settings?.property_tagline || 'Kalyana Mandapam & Function Hall';

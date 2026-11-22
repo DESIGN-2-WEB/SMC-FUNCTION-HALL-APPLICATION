@@ -98,6 +98,8 @@ body {
   .no-print { display: none !important; }
 }
 
+
+
 /* Suppress native browser password reveal eye and clear icons (Microsoft Edge / IE) */
 input::-ms-reveal,
 input::-ms-clear {
@@ -115,4 +117,87 @@ input[type='number']::-webkit-inner-spin-button {
 input[type='number'] {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* Phones. Buttons at the foot of a window line up in even rows, two to a row (the last one
+   takes the whole row when the count is odd), instead of wrapping to the right in odd sizes.
+   Groups inside the footer are opened up so all its buttons share the rows; `.keep-box` keeps
+   a group whole (a button with a menu that opens from it). */
+@media (max-width: 639.98px) {
+  .modal-footer > div:not(.keep-box),
+  .modal-footer > div:not(.keep-box) > div:not(.keep-box) { display: contents; }
+  .modal-footer > button,
+  .modal-footer > div:not(.keep-box) button,
+  .modal-footer .keep-box { flex: 1 1 calc(50% - 0.25rem); min-width: 0; }
+  .modal-footer .keep-box > button { width: 100%; }
+  .modal-footer button { height: auto; min-height: 2.5rem; padding-block: 0.5rem; line-height: 1.25; text-align: center; }
+
+  /* Actions under a list row and buttons at the top of a page: an even grid, two to a row,
+     the last one taking the whole row when the count is odd. An icon-only button shows its
+     name (its title) on a phone, so every button reads clearly. */
+  .row-actions,
+  .page-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    width: 100%;
+  }
+  .row-actions {
+    border-top: 1px dashed var(--color-stone-200);
+    padding-top: 0.75rem;
+  }
+  .row-actions > *,
+  .page-actions > * { width: 100%; min-width: 0; }
+  .row-actions > * { white-space: nowrap; }
+  .page-actions > button { height: auto; min-height: 2.5rem; padding-block: 0.5rem; line-height: 1.2; }
+  .row-actions > *:last-child:nth-child(odd),
+  .page-actions > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .row-actions > button { height: 2.25rem; border: 1px solid var(--color-stone-200); }
+  .row-actions > button[aria-label]::after { content: attr(aria-label); }
+  .row-actions > button[class*='rose'] { border: 1px solid var(--color-rose-200); }
+}
+
+/* Tables on phones and tablets. In the components layer, so a cell's own utility classes
+   (max-lg:hidden, max-lg:order-*) still win over these. */
+@layer components {
+@media (max-width: 1023.98px) {
+  /* Booking tables become one card per row. `.table-cards`: each table places its own cells
+     (max-sm:order-*, max-sm:hidden). `.table-stack`: every cell is shown under its column
+     name (set by useCellLabels), two to a line. */
+  .table-cards, .table-cards > tbody,
+  .table-stack, .table-stack > tbody { display: block; }
+  .table-cards > thead, .table-stack > thead { display: none; }
+  .table-cards > tbody > tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 0.75rem;
+    row-gap: 0.375rem;
+    padding: 0.875rem 1rem;
+  }
+  .table-stack > tbody > tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.625rem 1rem;
+    padding: 0.875rem 1rem;
+  }
+  .table-cards > tbody > tr > td, .table-stack > tbody > tr > td { display: block; }
+  .table-cards > tbody > tr > td,
+  .table-stack > tbody > tr > td { padding: 0; white-space: normal; min-width: 0; max-width: none; }
+  .table-stack > tbody > tr > td { text-align: left; }
+  .table-stack > tbody > tr > td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.125rem;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-stone-400);
+  }
+  .table-stack > tbody > tr > td:first-child,
+  .table-stack > tbody > tr > td:last-child { grid-column: 1 / -1; }
+  .table-stack > tbody > tr > td:first-child::before,
+  .table-stack > tbody > tr > td[data-label='']::before { display: none; }
+  .table-stack > tbody > tr > td:last-child > div { justify-content: flex-start; flex-wrap: wrap; }
+}
 }

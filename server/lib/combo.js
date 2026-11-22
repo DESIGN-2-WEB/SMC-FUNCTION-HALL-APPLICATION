@@ -30,7 +30,7 @@ export function comboPaymentsWhere(pkg) {
 }
 
 /** Total received for a combo, from the payments themselves. */
-export function comboPaid(pkg) {
+function comboPaid(pkg) {
   const w = comboPaymentsWhere(pkg);
   return get(`SELECT COALESCE(SUM(amount), 0) AS v FROM payments WHERE ${w.sql}`, ...w.args).v;
 }

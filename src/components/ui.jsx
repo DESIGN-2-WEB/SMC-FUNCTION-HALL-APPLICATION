@@ -36,14 +36,14 @@ export const Card = ({ className, ...p }) => <div className={cn('card', classNam
 
 export function CardHeader({ title, subtitle, action, icon: Icon }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-stone-100 px-5 py-4">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 px-4 py-4 sm:px-5">
+      <div className="flex min-w-0 items-center gap-3">
         {Icon && (
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-gold-50 text-gold-600">
             <Icon size={17} />
           </div>
         )}
-        <div>
+        <div className="min-w-0">
           <h3 className="font-semibold text-ink-900">{title}</h3>
           {subtitle && <p className="text-xs text-stone-500">{subtitle}</p>}
         </div>
@@ -55,12 +55,12 @@ export function CardHeader({ title, subtitle, action, icon: Icon }) {
 
 export function PageHeader({ title, subtitle, actions }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-ink-900">{title}</h1>
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-4 sm:mb-6">
+      <div className="min-w-0">
+        <h1 className="font-display text-[26px] leading-tight font-semibold tracking-tight text-ink-900 sm:text-3xl">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-stone-500">{subtitle}</p>}
       </div>
-      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+      {actions && <div className="page-actions flex flex-wrap gap-2 sm:w-auto">{actions}</div>}
     </div>
   );
 }
@@ -102,18 +102,19 @@ const ACCENTS = {
 export function StatCard({ icon: Icon, label, value, count, format, sub, accent = 'ink', className }) {
   const counting = typeof count === 'number' && Number.isFinite(count);
   return (
-    <div className={cn('card group p-5 transition duration-300 hover:-translate-y-0.5 hover:shadow-lg', className)}>
+    // @container: in a narrow card (two to a row on a phone) the icon steps aside for the amount
+    <div className={cn('card group @container p-4 transition duration-300 hover:-translate-y-0.5 hover:shadow-lg sm:p-5', className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">{label}</p>
-          <p className="mt-2 truncate font-display text-[28px] leading-tight font-semibold text-ink-900">
+          <p className="mt-2 truncate font-display text-2xl leading-tight font-semibold text-ink-900 sm:text-[28px]">
             {counting ? (
               <CountUp to={count} duration={1.3} trigger="load" formatter={v => (format ? format(Math.round(v)) : Math.round(v).toLocaleString('en-IN'))} />
             ) : value}
           </p>
           {sub && <p className="mt-1 text-xs text-stone-500">{sub}</p>}
         </div>
-        <div className={cn('grid h-11 w-11 shrink-0 place-items-center rounded-2xl transition duration-300 group-hover:scale-110 group-hover:rotate-3', ACCENTS[accent])}>
+        <div className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-2xl transition duration-300 group-hover:scale-110 group-hover:rotate-3 @max-[13rem]:hidden sm:h-11 sm:w-11', ACCENTS[accent])}>
           <Icon size={20} />
         </div>
       </div>
@@ -224,19 +225,22 @@ export function Modal({ onClose, title, subtitle, children, footer, size = 'md' 
   const width = { sm: 'sm:max-w-md', md: 'sm:max-w-xl', lg: 'sm:max-w-3xl' }[size];
   return (
     <Layer onClose={onClose} className="z-50 items-end sm:items-center sm:p-4">
-      <div className={cn('relative flex max-h-[94vh] w-full animate-pop flex-col rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl', width)}>
-        <div className="flex items-start justify-between gap-4 border-b border-stone-100 px-6 py-5">
+      {/* dvh: the height that is really visible on a phone (vh counts the space under the
+          browser's address bar, which pushed the window's title off the top of the screen) */}
+      <div className={cn('relative flex max-h-[92dvh] w-full animate-pop flex-col rounded-t-3xl bg-white shadow-2xl sm:max-h-[94dvh] sm:rounded-3xl', width)}>
+        <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-stone-200 sm:hidden" aria-hidden="true" />
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-stone-100 px-5 pt-3 pb-4 sm:px-6 sm:py-5">
           <div className="min-w-0">
-            <h2 className="font-display text-xl font-semibold text-ink-900">{title}</h2>
+            <h2 className="font-display text-lg leading-snug font-semibold text-ink-900 sm:text-xl">{title}</h2>
             {subtitle && <div className="mt-1 text-sm text-stone-500">{subtitle}</div>}
           </div>
-          <button onClick={onClose} className="cursor-pointer rounded-lg p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700">
+          <button onClick={onClose} aria-label="Close" className="-mr-1.5 shrink-0 cursor-pointer rounded-lg p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700">
             <X size={18} />
           </button>
         </div>
-        <div className="overflow-y-auto px-6 py-5">{children}</div>
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">{children}</div>
         {footer && (
-          <div className="flex flex-wrap items-center justify-end gap-2 rounded-b-3xl border-t border-stone-100 bg-stone-50/70 px-6 py-4">
+          <div className="modal-footer flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-stone-100 bg-stone-50/70 px-5 pt-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:rounded-b-3xl sm:px-6 sm:py-4">
             {footer}
           </div>
         )}

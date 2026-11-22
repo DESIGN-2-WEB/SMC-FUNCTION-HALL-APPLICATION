@@ -23,20 +23,21 @@ const NAV = [
   { to: '/settings', label: 'Settings', icon: SlidersHorizontal },
 ];
 
-export function Brand({ light = true, collapsed = false }) {
+export function Brand({ light = true, collapsed = false, compact = false }) {
   const { settings } = useSettings();
   const title = settings.property_short || settings.property_name || 'SMC Function Hall';
   const tagline = settings.property_tagline || 'Kalyana Mandapam & Function Hall';
 
   return (
-    <div className={cn('flex items-center gap-3', collapsed && 'justify-center')}>
-      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-gold-400/40 bg-[#e05624] shadow-md shadow-gold-500/10 ring-1 ring-white/10">
+    <div className={cn('flex min-w-0 items-center', compact ? 'gap-2.5' : 'gap-3', collapsed && 'justify-center')}>
+      <div className={cn('relative shrink-0 overflow-hidden rounded-xl border border-gold-400/40 bg-[#e05624] shadow-md shadow-gold-500/10 ring-1 ring-white/10', compact ? 'h-9 w-9' : 'h-11 w-11')}>
         <img src="/logo-square.jpg" alt="SMC Function Hall" className="h-full w-full object-cover" />
       </div>
       {!collapsed && (
-        <div className="leading-tight">
-          <p className={cn('font-display text-base font-semibold', light ? 'text-white' : 'text-ink-900')}>{title}</p>
-          <p className={cn('text-[10px] tracking-wider uppercase', light ? 'text-gold-300/80' : 'text-gold-600')}>{tagline}</p>
+        <div className="min-w-0 leading-tight">
+          <p className={cn('truncate font-display font-semibold', compact ? 'text-[15px]' : 'text-base', light ? 'text-white' : 'text-ink-900')}>{title}</p>
+          {/* phone header: one short line, hidden on the narrowest screens */}
+          <p className={cn('text-[10px] tracking-wider uppercase', compact && 'hidden truncate min-[400px]:block', light ? 'text-gold-300/80' : 'text-gold-600')}>{tagline}</p>
         </div>
       )}
     </div>
@@ -180,12 +181,12 @@ export default function Layout() {
         </div>
       )}
 
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-stone-200/70 bg-ivory/85 px-4 py-3 backdrop-blur lg:hidden">
-        <button onClick={() => setOpen(true)} className="rounded-xl p-2 text-ink-900 hover:bg-stone-200/60">
+      <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-stone-200/70 bg-ivory/85 px-3 py-2.5 backdrop-blur sm:px-4 lg:hidden">
+        <button onClick={() => setOpen(true)} aria-label="Open menu" className="shrink-0 rounded-xl p-2 text-ink-900 hover:bg-stone-200/60">
           <Menu size={22} />
         </button>
-        <Brand light={false} />
-        <button onClick={() => setAccountOpen(true)} className="cursor-pointer" title="View Account">
+        <div className="min-w-0 flex-1 px-1"><Brand light={false} compact /></div>
+        <button onClick={() => setAccountOpen(true)} className="shrink-0 cursor-pointer" title="View Account">
           <Avatar name={user.name} />
         </button>
       </header>

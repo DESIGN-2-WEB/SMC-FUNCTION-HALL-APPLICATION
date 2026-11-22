@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, apiCache, sessionGeneration } from './api.js';
 import { useUI } from './components/ui.jsx';
 
@@ -28,6 +28,23 @@ export function useApi(path) {
   }, [path]);
   useEffect(() => { load(); }, [load]);
   return { ...state, reload: load };
+}
+
+/**
+ * Ref for a <table className="table-stack">: copies each column's heading onto its cells, so
+ * on a phone every value is shown under its name. Runs after each render (rows change).
+ */
+export function useCellLabels() {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const table = ref.current;
+    if (!table) return;
+    const heads = [...table.querySelectorAll(':scope > thead th')].map(th => th.textContent.trim());
+    for (const tr of table.querySelectorAll(':scope > tbody > tr')) {
+      [...tr.children].forEach((td, i) => td.setAttribute('data-label', heads[i] || ''));
+    }
+  });
+  return ref;
 }
 
 export function useDebounced(value, ms = 250) {

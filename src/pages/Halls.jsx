@@ -371,7 +371,7 @@ export default function Halls() {
         </div>
         {list.length ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="table-cards w-full text-sm">
               <thead className="border-b border-stone-100 bg-stone-50/60">
                 <tr>
                   <th className="th">Date</th>
@@ -392,11 +392,12 @@ export default function Halls() {
                       onClick={() => (b.package_id ? setSelectedPackageId(b.package_id) : setDetailId(b.id))}
                       className="group cursor-pointer transition-colors duration-150 hover:bg-gold-50/80"
                     >
-                      <td className="td whitespace-nowrap">
-                        <p className="font-medium group-hover:text-gold-900 transition-colors">{fmtDate(b.event_date)}</p>
-                        <p className="text-xs text-stone-500">{slotName(b.slot)} · {relDay(b.event_date)}</p>
+                      <td className="td whitespace-nowrap max-lg:order-3 max-lg:whitespace-normal">
+                        <p className="font-medium group-hover:text-gold-900 transition-colors max-lg:text-xs max-lg:text-stone-600">{fmtDate(b.event_date)}<span className="lg:hidden"> · {slotName(b.slot)}</span></p>
+                        <p className="text-xs text-stone-500 max-lg:hidden">{slotName(b.slot)} · {relDay(b.event_date)}</p>
+                        <p className="text-xs text-stone-500 sm:hidden">{b.hall_name}{b.event_type ? ` · ${b.event_type}` : ''}{b.guests > 0 ? ` · ${b.guests} guests` : ''}</p>
                       </td>
-                      <td className="td">
+                      <td className="td min-w-52 max-lg:order-1 max-lg:min-w-0">
                         <p className="font-medium text-ink-900 group-hover:text-gold-900 transition-colors">{b.customer_name}</p>
                         <p className="text-xs text-stone-500">{b.phone || '—'}</p>
                         {b.package_id && (() => {
@@ -410,24 +411,24 @@ export default function Halls() {
                           ].filter(Boolean) : [];
                           if (!parts.length) return null;
                           return (
-                            <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-gold-100 px-2 py-0.5 text-[11px] font-semibold text-gold-800">
+                            <span className="mt-1 inline-flex items-center gap-1 rounded-lg bg-gold-100 px-2 py-0.5 text-[11px] leading-snug font-semibold text-gold-800">
                               Hall + add-ons{parts.length ? ` · ${parts.join(' · ')}` : ''}
                             </span>
                           );
                         })()}
                       </td>
-                      <td className="td whitespace-nowrap">{b.hall_name}</td>
-                      <td className="td whitespace-nowrap">
+                      <td className="td whitespace-nowrap max-lg:hidden">{b.hall_name}</td>
+                      <td className="td whitespace-nowrap max-lg:hidden">
                         <p>{b.event_type || '—'}</p>
                         {b.guests > 0 && <p className="text-xs text-stone-500">{b.guests} guests</p>}
                       </td>
-                      <td className="td text-right whitespace-nowrap">
+                      <td className="td text-right whitespace-nowrap max-lg:order-2">
                         {/* With add-ons the amount is the whole combined bill */}
                         <p className="font-medium">{inr(b.package_id ? b.combo_total : b.total)}</p>
                         <p className={cn('text-xs', due > 0 ? 'text-rose-600' : 'text-emerald-600')}>{due > 0 ? `${inr(due)} due` : 'Paid'}</p>
                       </td>
-                      <td className="td"><Badge tone={HALL_STATUS[b.status].tone} dot>{HALL_STATUS[b.status].label}</Badge></td>
-                      <td className="td text-right whitespace-nowrap">
+                      <td className="td max-lg:order-4 max-lg:self-end max-lg:justify-self-end"><Badge tone={HALL_STATUS[b.status].tone} dot>{HALL_STATUS[b.status].label}</Badge></td>
+                      <td className="td text-right whitespace-nowrap max-lg:hidden">
                         <span className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-400 group-hover:text-gold-800 group-hover:bg-gold-100/70 transition">
                           View <ChevronRight size={14} className="transition-transform group-hover:translate-x-0.5" />
                         </span>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Zap } from 'lucide-react';
-import { useApi } from '../hooks.js';
+import { useApi, useCellLabels } from '../hooks.js';
 import { Button, Modal, Segmented, cn } from './ui.jsx';
 import { fmtDate, inr, today } from '../utils.js';
 
@@ -38,6 +38,7 @@ export default function PowerUsageModal({ onClose }) {
     return v.map((value, i) => ({ key: i, label: String(i + 1), title: fmtDate(`${year}-${month}-${String(i + 1).padStart(2, '0')}`), value }));
   }, [rows, view, month, year, M]);
 
+  const eventsTable = useCellLabels();
   const shownRows = view === 'month' ? rows : rows.filter(r => r.event_date.slice(5, 7) === month);
   const withReadings = shownRows.filter(r => Number(r.power_units) > 0 || Number(r.generator_hours) > 0);
   const sum = f => shownRows.reduce((s, r) => s + f(r), 0);
@@ -141,7 +142,7 @@ export default function PowerUsageModal({ onClose }) {
           <p className="mb-2 text-sm font-semibold text-ink-900">Events in {period}</p>
           {shownRows.length ? (
             <div className="overflow-x-auto rounded-2xl border border-stone-200">
-              <table className="w-full text-sm">
+              <table ref={eventsTable} className="table-stack w-full text-sm">
                 <thead className="border-b border-stone-100 bg-stone-50/60">
                   <tr>
                     <th className="th">Date</th>
