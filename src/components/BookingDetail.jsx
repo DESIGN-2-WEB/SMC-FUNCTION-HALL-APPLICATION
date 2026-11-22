@@ -8,6 +8,7 @@ import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
 import {
   HALL_STATUS, METHODS, ROOM_STATUS, addDays, esc, fmtDate, fmtDateTime, inr, nights, nowTime, lateCheckout, roomTimes, slotName, slotWithTime, today,
+  generatorText,
 } from '../utils.js';
 import { Badge, Button, Field, Form, Input, Modal, PageLoader, cn, useUI } from './ui.jsx';
 import { DatePicker, Select } from './pickers.jsx';
@@ -286,10 +287,13 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
 
       {inCombo && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold-300 bg-gold-50/70 px-4 py-3">
-          <p className="min-w-0 text-sm text-gold-900">
-            Part of combo <b>{b.combo_bill_no || ''}</b>. Payments{!isRoom ? ' and the full bill' : ''} are on the combo.
-            {!isRoom && ' Power and generator added here also go on the combo bill.'}
-          </p>
+          <div className="min-w-0 text-sm text-gold-900">
+            <p>
+              Part of combined bill <b>{b.combo_bill_no || ''}</b>. Payments{!isRoom ? ' and the full bill' : ''} are there.
+              {!isRoom && ' Power and generator added here also go on it.'}
+            </p>
+            {!isRoom && <ComboContents packageId={b.package_id} />}
+          </div>
           <Button size="sm" variant="gold" onClick={() => setComboOpen(true)}>Open combo</Button>
         </div>
       )}
@@ -494,7 +498,7 @@ function printReceipt(kind, b, settings) {
         ['Expected guests', b.guests || '—'],
         ['Base Hall Rent', inr(b.rent || b.total)],
         ...(b.power_amount > 0 || b.power_units > 0 ? [['Power Bill', `${inr(b.power_amount)} (${b.power_units} units @ ₹${b.power_rate || settings?.power_rate || 15}/unit${b.power_end > b.power_start ? ` [Meter: ${b.power_start} → ${b.power_end}]` : ''})`]] : []),
-        ...(b.generator_amount > 0 || b.generator_hours > 0 ? [['Generator Bill', `${inr(b.generator_amount)} (${b.generator_type || 'Generator'} · ${b.generator_hours} hrs @ ${inr(b.generator_rate)}/hr)`]] : []),
+        ...(b.generator_amount > 0 || b.generator_hours > 0 ? [['Generator Bill', `${inr(b.generator_amount)} (${generatorText(b)})`]] : []),
       ];
   const pays = b.payments.map(p => `<tr><td>${esc(fmtDate(p.paid_on))}</td><td>${esc(p.method)}${p.note ? ' · ' + esc(p.note) : ''}</td><td class="r">${esc(inr(p.amount))}</td></tr>`).join('');
   const w = window.open('', '_blank', 'width=760,height=900');
@@ -544,4 +548,23 @@ function printReceipt(kind, b, settings) {
   w.document.close();
   w.focus();
   setTimeout(() => w.print(), 300);
+}
+
+/** What a hall booking's combined bill holds: rooms, supplies, decoration and Sannai Melam. */
+function ComboContents({ packageId }) {
+  const { data: pkg } = useApi(`/packages/${packageId}`);
+  if (!pkg) return null;
+  const supplies = (pkg.supplies || []).filter(s => s.status !== 'cancelled');
+  const parts = [
+    pkg.rooms?.length > 0 && `${pkg.rooms.length} room${pkg.rooms.length === 1 ? '' : 's'} ${inr(pkg.rooms.reduce((t, r) => t + (Number(r.total) || 0), 0))}`,
+    supplies.length > 0 && `${supplies.length} supply item${supplies.length === 1 ? '' : 's'} ${inr(supplies.reduce((t, x) => t + (Number(x.total_rent) || 0), 0))}`,
+    Number(pkg.decor_amount) > 0 && `Decoration ${inr(pkg.decor_amount)}`,
+    Number(pkg.band_amount) > 0 && `Sannai Melam ${inr(pkg.band_amount)}`,
+  ].filter(Boolean);
+  return (
+    <p className="mt-1 text-xs text-gold-800">
+      {parts.length ? `On this bill: ${parts.join(' · ')}. ` : ''}
+      Total <b>{inr(pkg.grand_total)}</b> · paid {inr(pkg.advance_paid)} · <b>{inr(pkg.balance)}</b> due
+    </p>
+  );
 }

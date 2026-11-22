@@ -1,4 +1,4 @@
-import { fmtDate, fmtDateTime, inr, nights, roomTimes, slotName, slotTime, today } from '../utils.js';
+import { fmtDate, fmtDateTime, generatorText, inr, nights, roomTimes, slotName, slotTime, today } from '../utils.js';
 
 /**
  * WhatsApp messages. Every message has the same layout (the hall name sits at the end):
@@ -177,7 +177,7 @@ export function buildHallMessage(b, settings, type = 'booking') {
     // the rent line only when power or generator were added on top of it
     ...(Number(b.power_amount) > 0 || Number(b.generator_amount) > 0 ? [['Hall rent', inr(b.rent || b.total)]] : []),
     ...(Number(b.power_amount) > 0 ? [['Power', `${inr(b.power_amount)} (${b.power_units} units × ₹${b.power_rate || 15})`]] : []),
-    ...(Number(b.generator_amount) > 0 ? [['Generator', `${inr(b.generator_amount)} (${b.generator_hours} hrs × ${inr(b.generator_rate)})`]] : []),
+    ...(Number(b.generator_amount) > 0 ? [['Generator', `${inr(b.generator_amount)} (${generatorText(b)})`]] : []),
     ...status.bill,
   ];
 

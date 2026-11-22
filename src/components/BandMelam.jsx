@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Ban, CheckCircle2, Drum, IndianRupee, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { Ban, CheckCircle2, Drum, IndianRupee, Pencil, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
+import { PartiesModal, PartyPicker } from './SannaiParties.jsx';
 import { api } from '../api.js';
 import { useApi, useRemove } from '../hooks.js';
 import { Badge, Button, Card, EmptyState, Field, Form, Input, Modal, Segmented, Textarea, useUI } from './ui.jsx';
@@ -26,6 +27,7 @@ export default function BandMelamTab({ isAdmin, hallBookings }) {
   const [editing, setEditing] = useState(null);
   const [paying, setPaying] = useState(null);
   const [share, setShare] = useState(null);
+  const [partiesOpen, setPartiesOpen] = useState(false);
 
   const rows = list.data || [];
   const shown = filter === 'booked' ? rows.filter(b => b.status === 'booked') : rows;
@@ -55,6 +57,7 @@ export default function BandMelamTab({ isAdmin, hallBookings }) {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Segmented value={filter} onChange={setFilter} options={[{ value: 'booked', label: 'Booked' }, { value: 'all', label: 'All' }]} />
+            {isAdmin && <Button variant="outline" icon={Users} onClick={() => setPartiesOpen(true)}>Parties</Button>}
             <Button variant="gold" icon={Plus} onClick={() => setEditing({})}>Book Sannai Melam</Button>
           </div>
         </div>
@@ -127,16 +130,17 @@ export default function BandMelamTab({ isAdmin, hallBookings }) {
       </Card>
 
       {editing && (
-        <BandForm booking={editing} hallBookings={hallBookings} onClose={() => setEditing(null)}
+        <BandForm booking={editing} hallBookings={hallBookings} onAddParties={isAdmin ? () => setPartiesOpen(true) : null} onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); list.reload(); }} />
       )}
+      {partiesOpen && <PartiesModal onClose={() => setPartiesOpen(false)} />}
       {paying && <BandPayment booking={paying} onClose={() => setPaying(null)} onSaved={() => { setPaying(null); list.reload(); }} />}
       {share && <WhatsAppModal kind="band" booking={share.b} initialTemplate={share.t} onClose={() => setShare(null)} />}
     </>
   );
 }
 
-function BandForm({ booking, hallBookings, onClose, onSaved }) {
+function BandForm({ booking, hallBookings, onAddParties, onClose, onSaved }) {
   const { toast } = useUI();
   const editing = !!booking.id;
   const [f, setF] = useState(() => ({
@@ -193,7 +197,13 @@ function BandForm({ booking, hallBookings, onClose, onSaved }) {
         <Field label="Phone"><Input type="tel" value={f.phone} onChange={e => set('phone', e.target.value)} placeholder="Mobile number" /></Field>
         <Field label="Event date" as="div"><DatePicker value={f.event_date} onChange={v => set('event_date', v)} /></Field>
         <Field label="Timing"><Input value={f.timing} onChange={e => set('timing', e.target.value)} placeholder="Baraat 6 PM" /></Field>
-        <Field label="Team name (optional)"><Input value={f.team} onChange={e => set('team', e.target.value)} placeholder="Sri Sai Sannai Melam" /></Field>
+        <Field label="Party" as="div" className="sm:col-span-2" hint="A party marked booked is already taken on this date">
+          <PartyPicker value={f.team} date={f.event_date} excludeId={booking.id} onAdd={onAddParties}
+            onPick={p => setF(prev => (p
+              ? { ...prev, team: p.name, team_phone: p.phone || '', players: p.players || prev.players, amount: p.price || prev.amount }
+              : { ...prev, team: '', team_phone: '' }))} />
+        </Field>
+        <Field label="Team name"><Input value={f.team} onChange={e => set('team', e.target.value)} placeholder="Party name" /></Field>
         <Field label="Team phone" hint="To send the team the programme timing on WhatsApp">
           <Input type="tel" value={f.team_phone} onChange={e => set('team_phone', e.target.value)} placeholder="Team leader's mobile" />
         </Field>

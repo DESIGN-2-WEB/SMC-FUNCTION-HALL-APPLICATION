@@ -39,8 +39,6 @@ export const fmtShort = d => fmtDate(d, { day: 'numeric', month: 'short' });
 export const fmtDateTime = s =>
   s ? new Date(s.replace(' ', 'T')).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—';
 
-export const fmtTime = s =>
-  s ? new Date(s.replace(' ', 'T')).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : '—';
 
 export const fmtDurationWords = sec => {
   const s = Math.max(0, Math.round(Number(sec) || 0));
@@ -130,6 +128,32 @@ export const roomTimes = (settings, room) => ({
   checkOut: room?.room_checkout || room?.checkout_time || settings?.room_checkout_time || '12:00 PM',
 });
 export const METHODS = ['Cash', 'UPI', 'Card', 'Bank transfer', 'Cheque'];
+
+/** The generators and their hourly rates from Settings (the two standard ones if none saved). */
+export const generatorPriceList = settings => {
+  let list = [];
+  try {
+    list = typeof settings.generators === 'string' ? JSON.parse(settings.generators) : settings.generators || [];
+  } catch { /* the standard list below */ }
+  list = Array.isArray(list) ? list.filter(g => g && g.name) : [];
+  return list.length ? list : [
+    { name: '120 kVA', rate: Number(settings.gen_120kva_rate) || 1500 },
+    { name: '30 kVA', rate: Number(settings.gen_30kva_rate) || 450 },
+  ];
+};
+
+/** A hall booking's generators as a list: one or more (bookings from before keep a single one). */
+export const generatorRows = b => {
+  try {
+    const rows = JSON.parse(b?.generator_list || '[]');
+    if (Array.isArray(rows) && rows.length) return rows;
+  } catch { /* the single generator below */ }
+  return b?.generator_type
+    ? [{ type: b.generator_type, hours: Number(b.generator_hours) || 0, rate: Number(b.generator_rate) || 0, amount: Number(b.generator_amount) || 0 }]
+    : [];
+};
+/** e.g. "120 kVA 4 hrs × ₹1,500 + 30 kVA 2 hrs × ₹450" */
+export const generatorText = b => generatorRows(b).map(g => `${g.type} ${g.hours} hrs × ${inr(g.rate)}`).join(' + ') || 'Generator';
 export const EVENT_TYPES = [
   'Wedding',
   'Engagement',

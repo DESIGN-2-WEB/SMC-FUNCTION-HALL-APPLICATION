@@ -3,7 +3,7 @@ import { BedDouble, Boxes, CreditCard, Drum, Flower2, Landmark, Pencil, Plus, Pr
 import { api } from '../api.js';
 import { useApi } from '../hooks.js';
 import { Badge, Button, Card, Field, Form, Input, Modal, cn, useUI } from './ui.jsx';
-import { esc, fmtDate, fmtDateTime, inr, nights, slotName, today } from '../utils.js';
+import { esc, fmtDate, fmtDateTime, generatorRows, generatorText, inr, nights, slotName, today } from '../utils.js';
 import { useSettings } from '../settings.jsx';
 import { useAuth } from '../auth.jsx';
 import { ExtraChargesForm } from './ExtraChargesForm.jsx';
@@ -279,7 +279,7 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
               )}
               {Number(pkg.hall.generator_amount) > 0 && (
                 <div className="flex items-center justify-between text-xs text-stone-600">
-                  <span>Generator ({pkg.hall.generator_type || 'Generator'} · {pkg.hall.generator_hours} hrs @ {inr(pkg.hall.generator_rate)}/hr)</span>
+                  <span>Generator ({generatorText(pkg.hall)})</span>
                   <span className="font-bold text-ink-900">{inr(pkg.hall.generator_amount)}</span>
                 </div>
               )}
@@ -540,7 +540,8 @@ export function printComboBill(pkg, settings) {
     if (Number(pkg.hall.power_amount) > 0)
       lines.push(['Power bill', 'Electricity', `${pkg.hall.power_units} units`, `₹${pkg.hall.power_rate}/unit`, Number(pkg.hall.power_amount)]);
     if (Number(pkg.hall.generator_amount) > 0)
-      lines.push(['Generator', pkg.hall.generator_type || 'Generator', `${pkg.hall.generator_hours} hrs`, `${inr(pkg.hall.generator_rate)}/hr`, Number(pkg.hall.generator_amount)]);
+      for (const g of generatorRows(pkg.hall))
+        lines.push(['Generator', g.type, `${g.hours} hrs`, `${inr(g.rate)}/hr`, Math.round(g.hours * g.rate)]);
   }
   for (const r of pkg.rooms || []) {
     const n = roomNights(r);

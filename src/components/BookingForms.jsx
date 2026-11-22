@@ -3,7 +3,8 @@ import { CalendarCheck, CheckCircle2, LogIn, Plus, Smartphone, Trash2, Zap } fro
 import { api } from '../api.js';
 import { useSave } from '../hooks.js';
 import { useSettings } from '../settings.jsx';
-import { EVENT_TYPES, METHODS, SLOTS, addDays, inr, nights, nowTime, roomTimes, slotName, slotTime, today } from '../utils.js';
+import { EVENT_TYPES, METHODS, SLOTS, addDays, generatorPriceList, generatorRows, inr, nights, nowTime, roomTimes, slotName, slotTime, today } from '../utils.js';
+import GeneratorRows, { genTotal } from './GeneratorRows.jsx';
 import { Button, Field, Form, Input, Modal, Segmented, Textarea, cn, useUI } from './ui.jsx';
 import { Combobox, DatePicker, Select } from './pickers.jsx';
 import HallAddons, { useHallAddons } from './HallAddons.jsx';
@@ -350,36 +351,10 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
   const rateFor = (hall, slot) => (hall ? (slot === 'full' ? hall.rate_full : hall.rate_half) : 0);
   const { settings } = useSettings();
   const dbPowerRate = Number(settings.power_rate) || 15;
-  let generatorsList = [];
-  try {
-    generatorsList = typeof settings.generators === 'string' ? JSON.parse(settings.generators) : (settings.generators || []);
-  } catch {
-    generatorsList = [];
-  }
-  if (!Array.isArray(generatorsList) || generatorsList.length === 0) {
-    generatorsList = [
-      { name: '120 kVA', rate: Number(settings.gen_120kva_rate) || 1500 },
-      { name: '30 kVA', rate: Number(settings.gen_30kva_rate) || 450 },
-    ];
-  }
-  const genRates = Object.fromEntries(generatorsList.map(g => [g.name, Number(g.rate) || 0]));
+  const generatorsList = generatorPriceList(settings);
   const eventTypes = settings.event_types
     ? settings.event_types.split(',').map(s => s.trim()).filter(Boolean)
     : EVENT_TYPES;
-  const genOptions = [
-    { value: '', label: 'None' },
-    ...generatorsList.map(g => ({
-      value: g.name,
-      label: `${g.name} (${inr(g.rate)}/hr)`,
-    })),
-  ];
-  if (booking?.generator_type && !genOptions.some(o => o.value === booking.generator_type)) {
-    genOptions.push({
-      value: booking.generator_type,
-      label: `${booking.generator_type} (${inr(booking.generator_rate || 0)}/hr)`,
-    });
-  }
-
   const [f, setF] = useState(() => {
     if (editing) {
       const b = { ...booking };
@@ -389,10 +364,7 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
       const power_units = b.power_units ?? (b.power_end > b.power_start ? b.power_end - b.power_start : '');
       const power_rate = b.power_rate || dbPowerRate;
       const power_amount = b.power_amount ?? (power_units ? power_units * power_rate : 0);
-      const generator_type = b.generator_type ?? '';
-      const generator_hours = b.generator_hours ?? '';
-      const generator_rate = b.generator_rate || (generator_type ? (genRates[generator_type] || 0) : 0);
-      const generator_amount = b.generator_amount ?? (generator_hours ? generator_hours * generator_rate : 0);
+      const generator_rows = generatorRows(b).map(g => ({ type: g.type, hours: g.hours || '', rate: Number(g.rate) || 0 }));
       return {
         ...b,
         rent,
@@ -401,11 +373,8 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
         power_units,
         power_rate,
         power_amount,
-        generator_type,
-        generator_hours,
-        generator_rate,
-        generator_amount,
-        total: b.total ?? (rent + power_amount + generator_amount),
+        generator_rows,
+        total: b.total ?? (rent + power_amount + genTotal(generator_rows)),
         advance: '',
         method: 'Cash',
       };
@@ -417,7 +386,7 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
       event_type: eventTypes[0] || 'Wedding', event_date: defaultDate || today(),
       slot: 'full', guests: '', rent: baseRent,
       power_start: '', power_end: '', power_units: '', power_rate: dbPowerRate, power_amount: 0,
-      generator_type: '', generator_hours: '', generator_rate: 0, generator_amount: 0,
+      generator_rows: [],
       total: baseRent, status: 'confirmed', advance: '', method: 'Cash', notes: '',
     };
   });
@@ -452,20 +421,8 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
       next.power_amount = Math.max(0, Math.round(u * r));
     }
 
-    if (k === 'generator_type') {
-      next.generator_rate = genRates[v] || 0;
-      const hrs = Number(next.generator_hours) || 0;
-      next.generator_amount = Math.max(0, Math.round(hrs * next.generator_rate));
-    }
-
-    if (k === 'generator_hours' || k === 'generator_rate') {
-      const hrs = Number(next.generator_hours) || 0;
-      const rate = Number(next.generator_rate) || 0;
-      next.generator_amount = Math.max(0, Math.round(hrs * rate));
-    }
-
-    if (autoTotal && ['hall_id', 'slot', 'rent', 'power_start', 'power_end', 'power_units', 'power_rate', 'generator_type', 'generator_hours', 'generator_rate'].includes(k)) {
-      next.total = Number(next.rent || 0) + Number(next.power_amount || 0) + Number(next.generator_amount || 0);
+    if (autoTotal && ['hall_id', 'slot', 'rent', 'power_start', 'power_end', 'power_units', 'power_rate'].includes(k)) {
+      next.total = Number(next.rent || 0) + Number(next.power_amount || 0) + genTotal(next.generator_rows || []);
     }
 
     return next;
@@ -474,7 +431,11 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
   const hall = halls.find(h => h.id === Number(f.hall_id));
   const rentVal = Number(f.rent || 0);
   const powerVal = Number(f.power_amount || 0);
-  const genVal = Number(f.generator_amount || 0);
+  const genVal = genTotal(f.generator_rows || []);
+  const setGenRows = rows => setF(p => ({
+    ...p, generator_rows: rows,
+    ...(autoTotal ? { total: Number(p.rent || 0) + Number(p.power_amount || 0) + genTotal(rows) } : {}),
+  }));
   const calculatedTotal = rentVal + powerVal + genVal;
 
   // Hall plus extras: one combined bill (combo) with one place to take payments
@@ -529,9 +490,7 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
         power_units: Number(f.power_units) || 0,
         power_rate: Number(f.power_rate) || dbPowerRate,
         power_amount: powerVal,
-        generator_hours: Number(f.generator_hours) || 0,
-        generator_rate: Number(f.generator_rate) || 0,
-        generator_amount: genVal,
+        generators: (f.generator_rows || []).filter(g => g.type).map(g => ({ type: g.type, hours: Number(g.hours) || 0, rate: g.rate })),
         total: Number(f.total) || calculatedTotal,
       }))} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field as="div" label="Choose Hall" className="sm:col-span-2">
@@ -613,17 +572,8 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
 
           <div className="rounded-xl border border-stone-200 bg-white p-3 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">Generator Bill</p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Field label="Generator">
-                <Select value={f.generator_type} onChange={v => set('generator_type', v)} options={genOptions} />
-              </Field>
-              <Field label="Hours of use">
-                <Input type="number" step="0.5" min="0" placeholder="0" value={f.generator_hours} onChange={e => set('generator_hours', e.target.value)} />
-              </Field>
-              <Field label="Generator bill (₹)" hint={f.generator_type ? `@ ${inr(f.generator_rate)}/hr` : 'No generator'}>
-                <Input type="number" min="0" value={f.generator_amount} readOnly className="bg-stone-50 font-medium" />
-              </Field>
-            </div>
+            <GeneratorRows rows={f.generator_rows || []} onChange={setGenRows} priceList={generatorsList} />
+            {genVal > 0 && <p className="text-right text-xs text-stone-600">Generator bill <b className="text-ink-900">{inr(genVal)}</b></p>}
           </div>
 
           {/* Real-time Bill Breakdown */}

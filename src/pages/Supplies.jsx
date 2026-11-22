@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import {
-  ArrowDownToLine, ArrowUpFromLine, Boxes, CheckCircle2, ChevronDown, ChevronUp, Handshake, History, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Sparkles, Trash2, Wallet, X,
+  ArrowDownToLine, ArrowUpFromLine, Boxes, Camera, CheckCircle2, ChevronDown, ChevronUp, Handshake, History, ImagePlus, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Sparkles, Trash2, Wallet, X,
 } from 'lucide-react';
+import { makePhoto } from '../imageResize.js';
 import { api } from '../api.js';
 import { useApi, useRemove, useSave } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
@@ -46,7 +47,8 @@ export default function Supplies() {
   const [returnRental, setReturnRental] = useState(null); // rental object
   const [groupReturnOrder, setGroupReturnOrder] = useState(null); // group object
   const [moveItem, setMoveItem] = useState(null); // { item, type: 'in' | 'out' }
-  const [editItem, setEditItem] = useState(null); // item object
+  const [editItem, setEditItem] = useState(null);
+  const [photoItem, setPhotoItem] = useState(null); // whose large photo is open
   const [historyItem, setHistoryItem] = useState(null); // item object
   const [waShare, setWaShare] = useState(null); // { item, move }
 
@@ -429,7 +431,8 @@ export default function Supplies() {
                 const rentPct = Math.min(100 - availPct, Math.round((rented / total) * 100));
                 return (
                   <div key={i.id} className="flex min-w-0 flex-col rounded-2xl border border-stone-200 bg-white p-4 transition hover:border-gold-300 hover:shadow-sm">
-                    <div className="flex items-start justify-between gap-2">
+                    <SupplyPicture item={i} onView={() => setPhotoItem(i)} />
+                    <div className="mt-3 flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-semibold text-ink-900">{i.name}</p>
                         <p className="mt-0.5 text-xs text-stone-500">{i.category}</p>
@@ -929,6 +932,7 @@ export default function Supplies() {
       )}
 
       {/* ADD / EDIT ITEM MODAL */}
+      {photoItem && <SupplyPhotoViewer item={photoItem} onClose={() => setPhotoItem(null)} />}
       {editItem && (
         <ItemModal
           item={editItem}
@@ -1009,8 +1013,10 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
 
   const [saving, setSaving] = useState(false);
 
-  // Quick fill from active hall bookings (using custom Select)
+  // The function these items are for: its details fill in, and the rent goes on its hall bill
+  const [hallBookingId, setHallBookingId] = useState('');
   const handleSelectBooking = bookingId => {
+    setHallBookingId(bookingId || '');
     if (!bookingId) return;
     const b = activeBookings.find(x => String(x.id) === String(bookingId));
     if (b) {
@@ -1022,7 +1028,7 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
         rent_date: b.event_date || today(),
         expected_return_date: addDays(b.event_date || today(), 1),
       }));
-      toast(`Selected ${b.customer_name}'s function`);
+      toast(`Selected ${b.customer_name}'s function. The rent goes on its hall bill.`);
     }
   };
 
@@ -1047,6 +1053,7 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
         name: found.name,
         unit: found.unit || 'pcs',
         category: found.category || '',
+        thumb: found.thumb || '',
         available: Number(found.quantity) || 0,
         quantity: 1,
         rent_rate: Number(found.rent_rate) || 0,
@@ -1097,7 +1104,7 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
     setSelectedItems(prev => [
       ...prev,
       ...inStock.filter(i => !prev.some(s => s.supply_id === i.id)).map(i => ({
-        supply_id: i.id, name: i.name, unit: i.unit || 'pcs', category: i.category || '',
+        supply_id: i.id, name: i.name, unit: i.unit || 'pcs', category: i.category || '', thumb: i.thumb || '',
         available: Number(i.quantity) || 0, quantity: 1, rent_rate: Number(i.rent_rate) || 0,
       })),
     ]);
@@ -1131,6 +1138,7 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
           rent_date: f.rent_date,
           expected_return_date: f.expected_return_date,
           advance_amount: adv,
+          hall_booking_id: hallBookingId || null,
           payment_method: f.payment_method,
           notes: f.notes.trim(),
           discount: fullSet.discount,
@@ -1142,7 +1150,9 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
         },
       });
 
-      toast(`Dispatched ${totalPieces} items in bulk to ${f.customer_name}`);
+      toast(res.combo_bill_no
+        ? `Dispatched ${totalPieces} items · added to the hall's combined bill ${res.combo_bill_no}`
+        : `Dispatched ${totalPieces} items in bulk to ${f.customer_name}`);
       onSaved(res);
     } catch (err) {
       toast(err.message, 'error');
@@ -1160,7 +1170,7 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
 
   // Build options for booking quick autofill (custom Select!)
   const bookingOptions = [
-    { value: '', label: '-- Choose active banquet booking to auto-fill --' },
+    { value: '', label: 'No function (separate bill)' },
     ...activeBookings.map(b => ({
       value: String(b.id),
       label: `${b.customer_name} · ${b.hall_name} (${b.event_type || 'Function'}) on ${fmtDate(b.event_date)}`,
@@ -1199,14 +1209,14 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wider text-ink-900 flex items-center gap-1.5">
                 <Sparkles size={14} className="text-gold-600" />
-                Quick Autofill from Active Function:
+                For a hall function?
               </span>
-              <span className="hidden text-[11px] text-gold-800 sm:inline">Optional shortcut</span>
+              <span className="hidden text-[11px] text-gold-800 sm:inline">Optional · the rent goes on that hall's bill</span>
             </div>
             <Select
               className="bg-white text-xs"
-              value=""
-              placeholder="-- Choose active banquet booking to auto-fill --"
+              value={hallBookingId}
+              placeholder="No function (separate bill)"
               onChange={handleSelectBooking}
               options={bookingOptions}
             />
@@ -1316,9 +1326,14 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
                   const isStockExceeded = it.quantity > it.available;
                   return (
                     <div key={it.supply_id} className="grid grid-cols-12 items-center gap-2 px-3 py-2.5 text-xs transition hover:bg-stone-50/50">
-                      <div className="col-span-5 min-w-0">
-                        <p className="font-semibold text-ink-900 truncate">{it.name}</p>
-                        <p className="text-[11px] text-stone-400">{it.category}</p>
+                      <div className="col-span-5 flex min-w-0 items-center gap-2">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-stone-100 text-stone-300">
+                          {it.thumb ? <img src={it.thumb} alt="" className="h-full w-full object-cover" /> : <Package size={16} />}
+                        </span>
+                        <span className="min-w-0">
+                          <p className="font-semibold text-ink-900 truncate">{it.name}</p>
+                          <p className="text-[11px] text-stone-400">{it.category}</p>
+                        </span>
                       </div>
                       <div className="col-span-2 text-center font-mono">
                         <span className="rounded-md bg-stone-100 px-2 py-0.5 text-[11px] text-stone-700 font-medium">
@@ -1838,6 +1853,9 @@ function ItemModal({ item, categories = DEFAULT_SUPPLY_CATEGORIES, onClose, onSa
       }
     >
       <Form id="item-form" onSubmit={() => save(f)} className="grid gap-4 sm:grid-cols-2">
+        <Field label="Photo (optional)" as="div" className="sm:col-span-2">
+          <ItemPhotoPicker thumb={f.thumb} onChange={pic => setF(p => ({ ...p, ...pic }))} />
+        </Field>
         <Field label="Equipment Name *" className="sm:col-span-2">
           <Input
             required
@@ -1987,6 +2005,62 @@ function MovesList({ supplyId, onShareWa }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** The item's picture on its card, or a default icon when it has none. */
+function SupplyPicture({ item, onView }) {
+  return item.thumb ? (
+    <button type="button" onClick={onView} className="block aspect-[16/9] w-full cursor-pointer overflow-hidden rounded-xl bg-stone-100"
+      aria-label={`See photo of ${item.name}`}>
+      <img src={item.thumb} alt={item.name} loading="lazy" className="h-full w-full object-cover" />
+    </button>
+  ) : (
+    <div className="grid aspect-[16/9] w-full place-items-center rounded-xl bg-stone-50 text-stone-300" aria-hidden="true">
+      <Package size={30} strokeWidth={1.5} />
+    </div>
+  );
+}
+
+/** The large photo of a supply item, fetched when opened. */
+function SupplyPhotoViewer({ item, onClose }) {
+  const big = useApi(`/supplies/${item.id}/photo`);
+  return (
+    <Modal size="lg" onClose={onClose} title={item.name} subtitle={`${item.category} · ₹${item.rent_rate || 0}/${item.unit}`}
+      footer={<Button variant="outline" onClick={onClose}>Close</Button>}>
+      <img src={big.data?.photo || item.thumb} alt={item.name} className="mx-auto max-h-[65vh] w-auto rounded-xl" />
+    </Modal>
+  );
+}
+
+/** Pick, change or remove an item's photo in its form (shrunk in the browser before saving). */
+function ItemPhotoPicker({ thumb, onChange }) {
+  const { toast } = useUI();
+  const [busy, setBusy] = useState(false);
+  const pick = async file => {
+    if (!file) return;
+    setBusy(true);
+    try { onChange(await makePhoto(file)); } catch (err) { toast(err.message, 'error'); }
+    setBusy(false);
+  };
+  return (
+    <div className="flex items-center gap-3">
+      <div className="grid h-20 w-28 shrink-0 place-items-center overflow-hidden rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-300">
+        {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" /> : <Package size={26} strokeWidth={1.5} />}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <label className={cn('inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-900 transition hover:border-gold-400', busy && 'pointer-events-none opacity-60')}>
+          {thumb ? <Camera size={14} /> : <ImagePlus size={14} />} {busy ? 'Reading…' : thumb ? 'Change photo' : 'Add photo'}
+          <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; pick(f); }} />
+        </label>
+        {thumb && (
+          <button type="button" onClick={() => onChange({ photo: '', thumb: '' })}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-stone-500 transition hover:bg-rose-50 hover:text-rose-600">
+            <X size={14} /> Remove
+          </button>
+        )}
+      </div>
     </div>
   );
 }

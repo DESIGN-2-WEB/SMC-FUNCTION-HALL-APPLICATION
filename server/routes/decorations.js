@@ -4,6 +4,7 @@ import { fail, found, inr, isDate, num, str } from '../lib/http.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { setBillNo } from '../lib/billno.js';
 import { hallBillFor } from '../lib/combo.js';
+import { parsePhoto } from '../lib/photo.js';
 
 /*
  * Decorations, planned area by area (stage, entrance, walkway...).
@@ -32,16 +33,6 @@ const parseItem = b => {
   return d;
 };
 
-// Photos arrive already shrunk by the browser, as JPEG/PNG/WebP image data
-const IMAGE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
-const parsePhoto = (b, item) => {
-  if (b.photo === undefined) return { photo: item?.photo || '', thumb: item?.thumb || '' }; // unchanged
-  const photo = str(b.photo), thumb = str(b.thumb);
-  if (!photo) return { photo: '', thumb: '' }; // removed
-  if (!IMAGE.test(photo) || !IMAGE.test(thumb)) fail('That photo could not be read. Try another picture.');
-  if (photo.length > 600000 || thumb.length > 80000) fail('That photo is too large. Try a smaller picture.');
-  return { photo, thumb };
-};
 // Lists carry only the small photo; the large one is fetched when someone opens it
 const LIST_COLS = "id, area, name, unit, price, thumb, photo <> '' AS has_photo, created_at";
 

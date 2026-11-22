@@ -3,9 +3,9 @@ import { Zap } from 'lucide-react';
 import { api } from '../api.js';
 import { useSettings } from '../settings.jsx';
 import { useAuth } from '../auth.jsx';
-import { inr } from '../utils.js';
+import { generatorPriceList, generatorRows, inr } from '../utils.js';
+import GeneratorRows, { genTotal } from './GeneratorRows.jsx';
 import { Button, Field, Form, Input, useUI } from './ui.jsx';
-import { Select } from './pickers.jsx';
 
 /**
  * Power meter reading and generator hours for a hall booking, entered inside the booking panel
@@ -18,17 +18,13 @@ export function ExtraChargesForm({ booking: b, billTotal = b.total, billPaid = b
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const powerRate = Number(b.power_rate) || Number(settings.power_rate) || 15;
-  let generators = [];
-  try {
-    generators = typeof settings.generators === 'string' ? JSON.parse(settings.generators) : settings.generators || [];
-  } catch {
-    generators = [];
-  }
-  if (!Array.isArray(generators)) generators = [];
+  const generators = generatorPriceList(settings);
   const [f, setF] = useState({
     power_start: b.power_start || '', power_end: b.power_end || '', power_units: b.power_units || '',
-    generator_type: b.generator_type || '', generator_hours: b.generator_hours || '',
   });
+  // One row per generator that ran (the big and the small one can both be on the bill)
+  const [gens, setGens] = useState(() => generatorRows(b).map(g => ({ type: g.type, hours: g.hours || '', rate: Number(g.rate) || 0 })));
+  const gensLocked = b.status === 'completed' && !isAdmin;
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setF(prev => {
     const next = { ...prev, [k]: v };
@@ -40,10 +36,8 @@ export function ExtraChargesForm({ booking: b, billTotal = b.total, billPaid = b
     return next;
   });
 
-  const listed = generators.find(g => g.name === f.generator_type);
-  const genRate = Number(listed ? listed.rate : f.generator_type === b.generator_type ? b.generator_rate : 0) || 0;
   const powerAmount = Math.round((Number(f.power_units) || 0) * powerRate);
-  const genAmount = f.generator_type ? Math.round((Number(f.generator_hours) || 0) * genRate) : 0;
+  const genAmount = gensLocked ? Number(b.generator_amount) || 0 : genTotal(gens);
   // The bill without any earlier power/generator charges (hall rent or a custom amount; for a
   // combo, the whole combo bill)
   const base = (Number(billTotal) || 0) - (Number(b.power_amount) || 0) - (Number(b.generator_amount) || 0);
@@ -59,8 +53,7 @@ export function ExtraChargesForm({ booking: b, billTotal = b.total, billPaid = b
           power_start: Number(f.power_start) || 0,
           power_end: Number(f.power_end) || 0,
           power_units: Number(f.power_units) || 0,
-          generator_type: f.generator_type,
-          generator_hours: f.generator_type ? Number(f.generator_hours) || 0 : 0,
+          generators: gens.filter(g => g.type).map(g => ({ type: g.type, hours: Number(g.hours) || 0 })),
         },
       });
       const startOnly = Number(f.power_start) > 0 && !(Number(f.power_end) > 0);
@@ -95,18 +88,7 @@ export function ExtraChargesForm({ booking: b, billTotal = b.total, billPaid = b
       </div>
       <div>
         <p className="mb-2 text-xs font-semibold tracking-wider text-stone-500 uppercase">Generator bill</p>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Generator">
-            <Select
-              value={f.generator_type}
-              onChange={v => set('generator_type', v)}
-              options={[{ value: '', label: 'Not used' }, ...generators.map(g => ({ value: g.name, label: `${g.name} (${inr(g.rate)}/hr)` }))]}
-            />
-          </Field>
-          <Field label="Hours used">
-            <Input type="number" min="0" step="0.5" placeholder="0" disabled={!f.generator_type} value={f.generator_hours} onChange={e => set('generator_hours', e.target.value)} />
-          </Field>
-        </div>
+        <GeneratorRows rows={gens} onChange={setGens} priceList={generators} locked={gensLocked} />
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">
         <p className="text-xs text-stone-600">

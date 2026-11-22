@@ -4,6 +4,8 @@ import { fail, found, num, str } from '../lib/http.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { setBillNo } from '../lib/billno.js';
 import { spreadDiscount } from '../lib/discount.js';
+import { addComboPayment, hallBillFor } from '../lib/combo.js';
+import { parsePhoto } from '../lib/photo.js';
 
 const r = Router();
 export default r;
@@ -39,7 +41,13 @@ r.get('/', (req, res) => {
     FROM supplies s
     ORDER BY s.category, s.name
   `);
-  res.json(items);
+  // Lists carry only the small photo; the large one is fetched when someone opens it
+  res.json(items.map(({ photo, ...i }) => ({ ...i, has_photo: !!photo })));
+});
+
+r.get('/:id/photo', (req, res) => {
+  const s = load(req.params.id);
+  res.json({ id: s.id, name: s.name, photo: s.photo });
 });
 
 // GET /supplies/rentals: Returns rental records
@@ -84,11 +92,12 @@ r.get('/moves', (req, res) => {
 // POST /supplies: Add new rental item
 r.post('/', requireAdmin, (req, res) => {
   const d = parse(req.body);
+  const p = parsePhoto(req.body);
   const id = tx(() => {
     const { id } = run(
-      `INSERT INTO supplies (name, category, unit, quantity, total_quantity, rented_quantity, min_quantity, rent_rate, unit_cost)
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`,
-      d.name, d.category, d.unit, d.total_quantity, d.total_quantity, d.min_quantity, d.rent_rate, d.unit_cost
+      `INSERT INTO supplies (name, category, unit, quantity, total_quantity, rented_quantity, min_quantity, rent_rate, unit_cost, photo, thumb)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+      d.name, d.category, d.unit, d.total_quantity, d.total_quantity, d.min_quantity, d.rent_rate, d.unit_cost, p.photo, p.thumb
     );
     if (d.total_quantity > 0) {
       run("INSERT INTO stock_moves (supply_id, type, quantity, balance, note, created_by) VALUES (?, 'in', ?, ?, 'Initial inventory added', ?)",
@@ -104,14 +113,15 @@ r.post('/', requireAdmin, (req, res) => {
 r.put('/:id', requireAdmin, (req, res) => {
   const old = load(req.params.id);
   const d = parse(req.body);
+  const p = parsePhoto(req.body, old);
   tx(() => {
     const rented = Number(old.rented_quantity) || 0;
     const newAvailable = Math.max(0, d.total_quantity - rented);
     run(
       `UPDATE supplies
-       SET name = ?, category = ?, unit = ?, total_quantity = ?, quantity = ?, min_quantity = ?, rent_rate = ?, unit_cost = ?
+       SET name = ?, category = ?, unit = ?, total_quantity = ?, quantity = ?, min_quantity = ?, rent_rate = ?, unit_cost = ?, photo = ?, thumb = ?
        WHERE id = ?`,
-      d.name, d.category, d.unit, d.total_quantity, newAvailable, d.min_quantity, d.rent_rate, d.unit_cost, old.id
+      d.name, d.category, d.unit, d.total_quantity, newAvailable, d.min_quantity, d.rent_rate, d.unit_cost, p.photo, p.thumb, old.id
     );
     if (d.total_quantity !== old.total_quantity) {
       const diff = d.total_quantity - (old.total_quantity || old.quantity);
@@ -145,6 +155,8 @@ r.post('/rent-bulk', (req, res) => {
   const payment_method = str(req.body.payment_method) || 'Cash';
   const notes = str(req.body.notes);
   const rawItems = Array.isArray(req.body.items) ? req.body.items : [];
+  const hallBookingId = num(req.body.hall_booking_id) || null;
+  if (hallBookingId && !get('SELECT id FROM hall_bookings WHERE id = ?', hallBookingId)) fail('That banquet booking no longer exists');
 
   if (!customer_name) fail('Customer or function in-charge name is required');
   if (!rawItems.length) fail('Please add at least one equipment item to rent');
@@ -173,6 +185,8 @@ r.post('/rent-bulk', (req, res) => {
 
     let grandTotalRent = 0;
     const createdRentals = [];
+    // Rented for an upcoming hall booking: it goes on that hall's combined bill
+    const packageId = hallBillFor(hallBookingId, req.user.id);
 
     let groupBillNo = null;
     for (const [index, it] of items.entries()) {
@@ -194,10 +208,10 @@ r.post('/rent-bulk', (req, res) => {
       const { id } = run(
         `INSERT INTO supply_rentals (
           supply_id, rental_group_id, customer_name, phone, event_name, rent_date, expected_return_date,
-          quantity, rent_rate, total_rent, discount, advance_amount, payment_method, status, notes, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'rented', ?, ?)`,
+          quantity, rent_rate, total_rent, discount, advance_amount, payment_method, status, notes, package_id, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'rented', ?, ?, ?)`,
         s.id, rental_group_id, customer_name, phone, event_name, rent_date, expected_return_date,
-        it.quantity, rate, total_rent, lineDiscount, advance_amount, payment_method, notes, req.user.id
+        it.quantity, rate, total_rent, lineDiscount, packageId ? 0 : advance_amount, payment_method, notes, packageId, req.user.id
       );
       groupBillNo = setBillNo('supply_rentals', id, groupBillNo || undefined); // one bill for the whole order
 
@@ -217,10 +231,19 @@ r.post('/rent-bulk', (req, res) => {
       });
     }
 
+    let comboBillNo = null;
+    if (packageId) {
+      run('UPDATE event_packages SET supplies_amount = supplies_amount + ?, total_amount = total_amount + ? WHERE id = ?',
+        grandTotalRent, grandTotalRent, packageId);
+      if (advance_amount > 0) addComboPayment(packageId, advance_amount, payment_method, 'Supplies advance', req.user.id);
+      comboBillNo = get('SELECT bill_no FROM event_packages WHERE id = ?', packageId).bill_no;
+    }
+
     return {
       ok: true,
       rental_group_id,
       bill_no: groupBillNo,
+      combo_bill_no: comboBillNo,
       customer_name,
       phone,
       event_name,

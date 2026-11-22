@@ -81,7 +81,7 @@ export default function Layout() {
       </div>
 
       {/* Navigation Links */}
-      <nav ref={ref} className={cn('relative flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden transition-all duration-300', isCollapsed ? 'px-2' : 'px-3')}>
+      <nav ref={ref} className={cn('no-scrollbar relative flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden transition-all duration-300', isCollapsed ? 'px-2' : 'px-3')}>
         {NAV.filter(n => !n.admin || isAdmin).map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}

@@ -5,27 +5,16 @@ import {
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
+import { generatorPriceList } from '../utils.js';
 import { Button, Card, Field, Form, Input, PageHeader, cn, useUI } from '../components/ui.jsx';
 
 import AccountModal from '../components/AccountModal.jsx';
 import BackupRestore from '../components/BackupRestore.jsx';
 import { WhatsAppIcon } from '../components/WhatsAppModal.jsx';
 
-function parseGenerators(raw, fallback120, fallback30) {
-  try {
-    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed.map((g, i) => ({
-        id: g.id || `gen_${i}_${Date.now()}`,
-        name: g.name || '',
-        rate: g.rate !== undefined ? g.rate : 0,
-      }));
-    }
-  } catch {}
-  return [
-    { id: 'gen_1', name: '120 kVA', rate: Number(fallback120) || 1500 },
-    { id: 'gen_2', name: '30 kVA', rate: Number(fallback30) || 450 },
-  ];
+/** The generator list from Settings, with an id per row for editing. */
+function parseGenerators(settings) {
+  return generatorPriceList(settings).map((g, i) => ({ id: g.id || `gen_${i}_${Date.now()}`, name: g.name || '', rate: g.rate ?? 0 }));
 }
 
 function CollapsibleCard({ id, icon: Icon, title, subtitle, badge, isOpen, onToggle, children }) {
@@ -84,7 +73,7 @@ export default function Settings() {
   const { toast } = useUI();
   const [f, setF] = useState(settings);
   const [generators, setGenerators] = useState(() =>
-    parseGenerators(settings.generators, settings.gen_120kva_rate, settings.gen_30kva_rate)
+    parseGenerators(settings)
   );
   const [saving, setSaving] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -107,7 +96,7 @@ export default function Settings() {
 
   useEffect(() => {
     setF(settings);
-    setGenerators(parseGenerators(settings.generators, settings.gen_120kva_rate, settings.gen_30kva_rate));
+    setGenerators(parseGenerators(settings));
   }, [settings]);
 
   useEffect(() => {

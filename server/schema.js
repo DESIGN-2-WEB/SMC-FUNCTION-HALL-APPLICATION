@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { db, get, run, tx } from './db.js';
 import { backfillBillNos } from './lib/billno.js';
-import { syncAllComboPaid } from './lib/combo.js';
+import { attachLinkedExtras, syncAllComboPaid } from './lib/combo.js';
 
 export function migrate() {
   db.exec(`
@@ -73,6 +73,7 @@ export function migrate() {
     generator_hours REAL NOT NULL DEFAULT 0,
     generator_rate REAL NOT NULL DEFAULT 0,
     generator_amount REAL NOT NULL DEFAULT 0,
+    generator_list TEXT NOT NULL DEFAULT '',
     total REAL NOT NULL DEFAULT 0,
     paid REAL NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'confirmed',
@@ -140,6 +141,7 @@ export function migrate() {
     ['generator_hours', 'REAL NOT NULL DEFAULT 0'],
     ['generator_rate', 'REAL NOT NULL DEFAULT 0'],
     ['generator_amount', 'REAL NOT NULL DEFAULT 0'],
+    ['generator_list', "TEXT NOT NULL DEFAULT ''"], // every generator used, when more than one ran (JSON)
     ['referral_name', "TEXT NOT NULL DEFAULT ''"], // who referred the customer (optional)
     ['referral_phone', "TEXT NOT NULL DEFAULT ''"],
   ];
@@ -186,6 +188,8 @@ export function migrate() {
     ['total_quantity', 'REAL NOT NULL DEFAULT 0'],
     ['rented_quantity', 'REAL NOT NULL DEFAULT 0'],
     ['rent_rate', 'REAL NOT NULL DEFAULT 0'],
+    ['photo', "TEXT NOT NULL DEFAULT ''"], // optional picture of the item (large)
+    ['thumb', "TEXT NOT NULL DEFAULT ''"], // and its small copy for lists
   ];
   for (const [col, def] of newSCols) {
     if (!sCols.has(col)) {
@@ -385,6 +389,22 @@ export function migrate() {
     if (!cols.has('bill_no')) db.exec(`ALTER TABLE ${table} ADD COLUMN bill_no TEXT NOT NULL DEFAULT ''`);
   }
 
+  // Lookups used on every list: what belongs to a combined bill (its extras are added up per
+  // row), bookings in a date range, and the day's collections. Without these each would scan
+  // the whole table, which slows down as bookings pile up over the years.
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_hall_bookings_pkg ON hall_bookings(package_id);
+    CREATE INDEX IF NOT EXISTS idx_hall_bookings_date ON hall_bookings(event_date);
+    CREATE INDEX IF NOT EXISTS idx_room_bookings_pkg ON room_bookings(package_id);
+    CREATE INDEX IF NOT EXISTS idx_room_bookings_out ON room_bookings(check_out);
+    CREATE INDEX IF NOT EXISTS idx_supply_rentals_pkg ON supply_rentals(package_id);
+    CREATE INDEX IF NOT EXISTS idx_decor_plans_pkg ON decor_plans(package_id);
+    CREATE INDEX IF NOT EXISTS idx_decor_plans_hall ON decor_plans(hall_booking_id);
+    CREATE INDEX IF NOT EXISTS idx_band_bookings_pkg ON band_bookings(package_id);
+    CREATE INDEX IF NOT EXISTS idx_band_bookings_hall ON band_bookings(hall_booking_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_paid_on ON payments(paid_on);
+  `);
+
   // One-time backfill, only when the rental columns were just added to an old database
   if (!sCols.has('total_quantity')) {
     db.exec("UPDATE supplies SET total_quantity = quantity WHERE total_quantity = 0 AND quantity > 0");
@@ -404,6 +424,7 @@ export function applyDefaults() {
   }
   db.prepare(`DELETE FROM settings WHERE key IN (${RETIRED_SETTINGS.map(() => '?').join(', ')})`).run(...RETIRED_SETTINGS);
   backfillBillNos(); // older bookings get a bill number once the real data has loaded
+  attachLinkedExtras(); // Sannai Melam / decoration booked for an upcoming hall go on its bill
   syncAllComboPaid(); // combos count payments taken on their hall or rooms too
   fillTimings();
   repairSupplyTotals();
@@ -559,6 +580,7 @@ export const DEFAULT_SETTINGS = {
   hall_half_time: '7:00 AM to 3:00 PM',
   decor_areas: 'Stage, Entrance, Walkway, Photo booths, Main outdoor staircase',
   supplies_full_set_price: '8000', // price when every supply item is taken together
+  sannai_parties: '[]', // Sannai Melam teams the hall works with: [{ name, phone, players, price }]
 };
 
 // Settings of the removed WhatsApp API option (Meta, Twilio, webhook). Messages now always

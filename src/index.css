@@ -44,6 +44,22 @@
   @keyframes shrink { to { transform: scaleX(0); } }
 }
 
+/* Scrollbars: thin and in the app's gold, shown only while the pointer is over the area that
+   scrolls (scrolling itself always works). `.no-scrollbar` hides one completely. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+*:hover {
+  scrollbar-color: rgb(193 148 69 / 0.45) transparent;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
+*:hover::-webkit-scrollbar-thumb { background: rgb(193 148 69 / 0.45); }
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 body {
   background: var(--color-ivory);
   color: var(--color-ink-900);

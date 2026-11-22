@@ -5,6 +5,7 @@ import { requireAdmin } from '../middleware/auth.js';
 import { setBillNo } from '../lib/billno.js';
 import { getDBSettings } from './settings.js';
 import { COMBO_COLUMNS, COMBO_JOINS, safeNote, syncComboPaid } from '../lib/combo.js';
+import { generatorColumns, parseGenerators, storedGenerators } from '../lib/generators.js';
 
 /*
  * Room bookings and hall bookings share one flow (list, view, create, edit,
@@ -85,7 +86,7 @@ const KINDS = {
     fields: [
       'hall_id', 'customer_name', 'phone', 'event_type', 'event_date', 'slot', 'guests',
       'rent', 'power_start', 'power_end', 'power_units', 'power_rate', 'power_amount',
-      'generator_type', 'generator_hours', 'generator_rate', 'generator_amount',
+      'generator_type', 'generator_hours', 'generator_rate', 'generator_amount', 'generator_list',
       'total', 'notes', 'referral_name', 'referral_phone',
     ],
     initialStatus: () => 'confirmed', // no tentative holds: every new hall booking is confirmed
@@ -102,46 +103,22 @@ const KINDS = {
       const power_rate = b.power_rate !== undefined && b.power_rate !== '' ? num(b.power_rate) : defaultPowerRate;
       const power_amount = num(b.power_amount) || Math.round(power_units * power_rate);
 
-      const generator_type = str(b.generator_type);
-      const generator_hours = num(b.generator_hours);
-
-      let generators = [];
-      try {
-        generators = typeof settings.generators === 'string' ? JSON.parse(settings.generators) : (settings.generators || []);
-      } catch {
-        generators = [];
-      }
-      if (!Array.isArray(generators) || generators.length === 0) {
-        generators = [
-          { name: '120 kVA', rate: Number(settings.gen_120kva_rate) || 1500 },
-          { name: '30 kVA', rate: Number(settings.gen_30kva_rate) || 450 },
-        ];
-      }
-
-      let defaultGenRate = 0;
-      if (generator_type) {
-        const found = generators.find(g => g.name && g.name.trim().toLowerCase() === generator_type.trim().toLowerCase());
-        if (found) {
-          defaultGenRate = Number(found.rate) || 0;
-        } else if (generator_type.includes('120')) {
-          defaultGenRate = Number(settings.gen_120kva_rate) || 1500;
-        } else if (generator_type.includes('30')) {
-          defaultGenRate = Number(settings.gen_30kva_rate) || 450;
-        }
-      }
-      const generator_rate = b.generator_rate !== undefined && b.generator_rate !== '' ? num(b.generator_rate) : defaultGenRate;
-      const generator_amount = num(b.generator_amount) || Math.round(generator_hours * generator_rate);
+      // One or more generators: the list from the form, or (for a caller sending the booking
+      // back as it was) the ones it already has. Rates come from Settings; a generator no longer
+      // listed keeps the rate it was saved with.
+      const rawGens = Array.isArray(b.generators) ? b.generators : storedGenerators(b);
+      const gen = generatorColumns(parseGenerators(rawGens, settings, rawGens.map(g => ({ type: str(g?.type), rate: num(g?.rate) }))));
 
       let total = num(b.total);
       if (rent > 0 && (!b.total || total === 0 || b.auto_calc)) {
-        total = rent + power_amount + generator_amount;
+        total = rent + power_amount + gen.generator_amount;
       }
 
       const d = {
         hall_id: num(b.hall_id), customer_name: str(b.customer_name), phone: str(b.phone), event_type: str(b.event_type),
         event_date: str(b.event_date), slot: SLOT_NAMES[b.slot] ? b.slot : 'full', guests: Math.max(0, Math.round(num(b.guests))),
         rent, power_start, power_end, power_units, power_rate, power_amount,
-        generator_type, generator_hours, generator_rate, generator_amount,
+        ...gen,
         total: Math.max(0, total), notes: str(b.notes),
         // Optional: who referred this customer
         referral_name: str(b.referral_name).slice(0, 100), referral_phone: str(b.referral_phone).slice(0, 30),
@@ -235,7 +212,7 @@ function bookingRouter(kind) {
     res.json(all(
       `SELECT b.id, b.bill_no, b.event_date, b.slot, b.customer_name, b.event_type, b.status, h.name AS hall_name,
               b.power_start, b.power_end, b.power_units, b.power_rate, b.power_amount,
-              b.generator_type, b.generator_hours, b.generator_amount
+              b.generator_type, b.generator_hours, b.generator_amount, b.generator_list
        FROM hall_bookings b JOIN halls h ON h.id = b.hall_id
        WHERE substr(b.event_date, 1, 4) = ? AND b.status <> 'cancelled'
        ORDER BY b.event_date, b.id`, year));
@@ -372,21 +349,21 @@ function bookingRouter(kind) {
     const power_units = power_end > 0 ? power_end - power_start : power_start > 0 ? 0 : Math.max(0, num(req.body.power_units));
     const power_rate = Number(b.power_rate) || Number(settings.power_rate) || 15;
     const power_amount = Math.round(power_units * power_rate);
-    const generator_type = lockedForStaff ? b.generator_type || '' : str(req.body.generator_type);
-    let generators = [];
-    try { generators = JSON.parse(settings.generators || '[]'); } catch { generators = []; }
-    const listed = generator_type && Array.isArray(generators) ? generators.find(g => g.name === generator_type) : null;
-    if (generator_type && !listed && generator_type !== b.generator_type) fail('Choose a generator from the list');
-    const generator_rate = lockedForStaff ? Number(b.generator_rate) || 0 : !generator_type ? 0 : listed ? Number(listed.rate) || 0 : Number(b.generator_rate) || 0;
-    const generator_hours = lockedForStaff ? Number(b.generator_hours) || 0 : generator_type ? Math.max(0, num(req.body.generator_hours)) : 0;
-    const generator_amount = lockedForStaff ? Number(b.generator_amount) || 0 : Math.round(generator_hours * generator_rate);
+    // Every generator that ran (one or more), rates from Settings; locked ones stay as stored
+    const stored = storedGenerators(b);
+    const rawGens = Array.isArray(req.body.generators) ? req.body.generators
+      : str(req.body.generator_type) ? [{ type: req.body.generator_type, hours: req.body.generator_hours }] : [];
+    const gen = lockedForStaff
+      ? { ...generatorColumns(stored), generator_amount: Number(b.generator_amount) || 0 }
+      : generatorColumns(parseGenerators(rawGens, settings, stored));
+    const generator_amount = gen.generator_amount;
     const base = (Number(b.total) || 0) - (Number(b.power_amount) || 0) - (Number(b.generator_amount) || 0);
     const total = Math.max(0, base + power_amount + generator_amount);
     run(`UPDATE hall_bookings SET power_start = ?, power_end = ?, power_units = ?, power_rate = ?, power_amount = ?,
-           generator_type = ?, generator_hours = ?, generator_rate = ?, generator_amount = ?, total = ?
+           generator_type = ?, generator_hours = ?, generator_rate = ?, generator_amount = ?, generator_list = ?, total = ?
          WHERE id = ?`,
       power_start, power_end, power_units, power_rate, power_amount,
-      generator_type, generator_hours, generator_rate, generator_amount, total, b.id);
+      gen.generator_type, gen.generator_hours, gen.generator_rate, generator_amount, gen.generator_list, total, b.id);
     log(req.user.id, 'hall power & generator', `${K.label(b)} · power ${inr(power_amount)} · generator ${inr(generator_amount)} · total ${inr(total)}`);
     res.json(load(b.id));
   });

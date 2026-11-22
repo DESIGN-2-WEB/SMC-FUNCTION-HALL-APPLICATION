@@ -7,6 +7,7 @@ import { useFullSetDiscount } from '../fullSet.js';
 import { DatePicker } from './pickers.jsx';
 import { addDays, inr, nights } from '../utils.js';
 import { DecorLinesEditor, decorAreas, decorItemsPayload, decorSubtotal } from './Decorations.jsx';
+import { PartyPicker } from './SannaiParties.jsx';
 
 /*
  * Extras a customer can add while booking a hall: rooms, supplies and decoration.
@@ -91,7 +92,7 @@ export function useHallAddons(eventDate) {
     open, setOpen, dates, setDates, nightCount,
     roomRates, setRoomRates, supplyQty, setSupplyQty, suppliesItemsTotal, inStock, allSupplies, fullSet, selectAllSupplies,
     decorLines, setDecorLines, decorDiscount, setDecorDiscount,
-    band, setBand,
+    band, setBand, eventDate,
     roomsTotal, suppliesTotal, decorTotal, bandTotal, total: roomsTotal + suppliesTotal + decorTotal + bandTotal,
     any, payload, problem,
   };
@@ -140,7 +141,13 @@ export default function HallAddons({ addons: a }) {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Programme timing"><Input value={a.band.timing} onChange={e => a.setBand(b => ({ ...b, timing: e.target.value }))} placeholder="Baraat 6 PM" /></Field>
             <Field label="Price (₹)"><Input type="number" min="1" value={a.band.amount} onChange={e => a.setBand(b => ({ ...b, amount: e.target.value }))} placeholder="15000" /></Field>
-            <Field label="Team name (optional)"><Input value={a.band.team} onChange={e => a.setBand(b => ({ ...b, team: e.target.value }))} placeholder="Sri Sai Sannai Melam" /></Field>
+            <Field label="Party" as="div" className="sm:col-span-2" hint="A party marked booked is already taken on this date">
+              <PartyPicker value={a.band.team} date={a.eventDate}
+                onPick={p => a.setBand(b => (p
+                  ? { ...b, team: p.name, team_phone: p.phone || '', players: p.players || b.players, amount: p.price || b.amount }
+                  : { ...b, team: '', team_phone: '' }))} />
+            </Field>
+            <Field label="Team name"><Input value={a.band.team} onChange={e => a.setBand(b => ({ ...b, team: e.target.value }))} placeholder="Party name" /></Field>
             <Field label="Team phone (optional)"><Input type="tel" value={a.band.team_phone} onChange={e => a.setBand(b => ({ ...b, team_phone: e.target.value }))} placeholder="Team leader's mobile" /></Field>
             <Field label="Players (optional)"><Input type="number" min="0" value={a.band.players} onChange={e => a.setBand(b => ({ ...b, players: e.target.value }))} placeholder="8" /></Field>
           </div>

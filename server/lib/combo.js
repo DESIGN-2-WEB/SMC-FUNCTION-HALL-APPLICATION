@@ -73,6 +73,30 @@ export function hallBillFor(hallBookingId, userId) {
   return comboForHall(hb, userId);
 }
 
+/**
+ * Once at start: Sannai Melam and decoration booked against an upcoming hall booking before they
+ * were put on hall bills are moved onto that hall's combined bill (with anything paid for them).
+ */
+export function attachLinkedExtras() {
+  for (const t of ['band_bookings', 'decor_plans']) {
+    const rows = all(`SELECT x.id, x.hall_booking_id, x.created_by FROM ${t} x JOIN hall_bookings hb ON hb.id = x.hall_booking_id
+                      WHERE x.package_id IS NULL AND x.status NOT IN ('cancelled', 'done') AND hb.status IN ('tentative', 'confirmed')`);
+    for (const x of rows) {
+      const packageId = hallBillFor(x.hall_booking_id, x.created_by);
+      if (!packageId) continue;
+      run(`UPDATE ${t} SET package_id = ? WHERE id = ?`, packageId, x.id);
+      if (t === 'band_bookings') {
+        run("UPDATE payments SET kind = 'hall', booking_id = ?, note = ? WHERE kind = 'band' AND booking_id = ?",
+          x.hall_booking_id, `Package Payment for #${packageId} · Sannai Melam (paid earlier)`, x.id);
+        run("UPDATE band_bookings SET paid = 0 WHERE id = ?", x.id);
+        run("UPDATE hall_bookings SET paid = (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE kind = 'hall' AND booking_id = ?) WHERE id = ?",
+          x.hall_booking_id, x.hall_booking_id);
+      }
+      syncComboPaid(packageId);
+    }
+  }
+}
+
 /** Money taken for something on a combined bill is a payment on that bill. */
 export function addComboPayment(packageId, amount, method, label, userId) {
   const pkg = get('SELECT id, hall_booking_id FROM event_packages WHERE id = ?', packageId);

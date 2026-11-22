@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { CalendarDays, Check, ChevronDown, ChevronRight, Landmark, Layers, PartyPopper, Pencil, Plus, Search, Sparkles, Trash2, Users as UsersIcon, X, Zap } from 'lucide-react';
+import { CalendarDays, Check, ChevronDown, ChevronRight, Landmark, Layers, PartyPopper, Pencil, Plus, Search, Trash2, Users as UsersIcon, X, Zap } from 'lucide-react';
 import { useApi, useDebounced, useRemove, useSave } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
@@ -127,21 +127,6 @@ export default function Halls() {
     }));
   const byDate = (x, y) => (filter === 'upcoming' ? x.event_date.localeCompare(y.event_date) : y.event_date.localeCompare(x.event_date));
   const list = [...(bookings.data || []), ...hallLessCombos].sort(byDate);
-
-  let generatorsList = [];
-  try {
-    generatorsList = typeof settings.generators === 'string' ? JSON.parse(settings.generators) : (settings.generators || []);
-  } catch {
-    generatorsList = [];
-  }
-  if (!Array.isArray(generatorsList) || generatorsList.length === 0) {
-    generatorsList = [
-      { name: '120 kVA', rate: Number(settings.gen_120kva_rate) || 1500 },
-      { name: '30 kVA', rate: Number(settings.gen_30kva_rate) || 450 },
-    ];
-  }
-
-  const comboHall = halls.data?.find(h => /combo/i.test(h.name));
 
   return (
     <>
