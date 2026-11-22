@@ -14,7 +14,7 @@ import { usePageEnter, useStaggerIn } from '../motion.js';
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/rooms', label: 'Rooms', icon: BedDouble },
-  { to: '/halls', label: 'Banquet Halls', icon: PartyPopper },
+  { to: '/halls', label: 'Halls & Venues', icon: PartyPopper },
   { to: '/sannai-melam', label: 'Sannai Melam', icon: Drum },
   { to: '/supplies', label: 'Supplies', icon: Package },
   { to: '/decorations', label: 'Decorations', icon: Flower2 },

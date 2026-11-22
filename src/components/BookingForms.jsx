@@ -297,7 +297,7 @@ export function RoomBookingForm({ booking, guest, rooms, defaultRoomId, defaultD
         </div>
         <Field label="Address" className="sm:col-span-2"><Input value={f.address} onChange={e => set('address', e.target.value)} placeholder="City / address" /></Field>
         <Field label="Rate per night (₹)"><Input type="number" min="0" value={f.rate} onChange={e => set('rate', e.target.value)} /></Field>
-        <Field label="Discount (₹)" hint={discAmount > 0 ? `Discount applied: −${inr(discAmount)}` : 'Flat discount on stay'}>
+        <Field label="Discount (₹)" hint={discAmount > 0 ? `Discount applied: −${inr(discAmount)}` : 'Type a discount, or type a lower bill total below'}>
           <Input type="number" min="0" placeholder="0" value={f.discount} onChange={e => set('discount', e.target.value)} />
         </Field>
         <Field label="Room bill total (₹)" className="sm:col-span-2"
@@ -305,7 +305,14 @@ export function RoomBookingForm({ booking, guest, rooms, defaultRoomId, defaultD
             ? `Bill: ${n} night${n === 1 ? '' : 's'} × ${inr(f.rate)}${discAmount > 0 ? ` − ${inr(discAmount)} discount` : ''}`
             : `Custom amount · calculated bill would be ${inr(calcTotal)}`}>
           <div className="flex gap-2">
-            <Input type="number" min="0" value={f.total} onChange={e => { setAutoTotal(false); set('total', e.target.value); }} />
+            <Input type="number" min="0" value={f.total} onChange={e => {
+              const typed = e.target.value;
+              const base = n * Number(f.rate || 0);
+              if (typed !== '' && Number(typed) <= base) {
+                setAutoTotal(true);
+                setF(p => ({ ...p, total: typed, discount: base - Number(typed) || '' }));
+              } else { setAutoTotal(false); set('total', typed); }
+            }} />
             {!autoTotal && (
               <Button type="button" size="sm" variant="outline" onClick={() => { setAutoTotal(true); setF(prev => ({ ...prev, total: calcTotal })); }}>
                 Recalculate
@@ -368,6 +375,8 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
       return {
         ...b,
         rent,
+        discount: Number(b.discount) || '',
+        list_price: rent + (Number(b.discount) || 0), // the hall's price when it was booked
         power_start,
         power_end,
         power_units,
@@ -384,7 +393,7 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
     return {
       hall_id: hall?.id ?? '', customer_name: '', phone: '', referral_name: '', referral_phone: '',
       event_type: eventTypes[0] || 'Wedding', event_date: defaultDate || today(),
-      slot: 'full', guests: '', rent: baseRent,
+      slot: 'full', guests: '', rent: baseRent, list_price: baseRent, discount: '',
       power_start: '', power_end: '', power_units: '', power_rate: dbPowerRate, power_amount: 0,
       generator_rows: [],
       total: baseRent, status: 'confirmed', advance: '', method: 'Cash', notes: '',
@@ -402,9 +411,21 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
   const set = (k, v) => setF(prev => {
     const next = { ...prev, [k]: v };
 
+    // The hall's price for the slot; typing a lower rent fills the discount, typing a discount
+    // lowers the rent (rent is what is charged, so every bill stays rent + power + generator)
     if (k === 'hall_id' || k === 'slot') {
       const hall = halls.find(h => h.id === Number(next.hall_id));
-      next.rent = rateFor(hall, next.slot);
+      next.list_price = rateFor(hall, next.slot);
+      next.rent = next.list_price;
+      next.discount = '';
+    }
+    if (k === 'rent') {
+      const off = Number(next.list_price || 0) - Number(v || 0);
+      next.discount = off > 0 ? off : '';
+    }
+    if (k === 'discount') {
+      const off = Math.min(Number(next.list_price || 0), Math.max(0, Number(v) || 0));
+      next.rent = Number(next.list_price || 0) - off;
     }
 
     if (k === 'power_start' || k === 'power_end') {
@@ -421,7 +442,7 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
       next.power_amount = Math.max(0, Math.round(u * r));
     }
 
-    if (autoTotal && ['hall_id', 'slot', 'rent', 'power_start', 'power_end', 'power_units', 'power_rate'].includes(k)) {
+    if (autoTotal && ['hall_id', 'slot', 'rent', 'discount', 'power_start', 'power_end', 'power_units', 'power_rate'].includes(k)) {
       next.total = Number(next.rent || 0) + Number(next.power_amount || 0) + genTotal(next.generator_rows || []);
     }
 
@@ -450,7 +471,7 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
         body: {
           customer_name: f.customer_name, phone: f.phone, event_type: f.event_type, event_date: f.event_date, slot: f.slot,
           guests: Number(f.guests) || 0, referral_name: f.referral_name, referral_phone: f.referral_phone,
-          hall_id: Number(f.hall_id), hall_rent: rentVal, notes: f.notes,
+          hall_id: Number(f.hall_id), hall_rent: rentVal, hall_discount: Number(f.discount) || 0, notes: f.notes,
           advance: Number(f.advance) || 0, payment_method: f.method,
           ...addons.payload(),
         },
@@ -467,7 +488,7 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
     <Modal
       size="lg"
       title={editing ? 'Edit hall booking' : 'New hall booking'}
-      subtitle={editing ? `Booking #${booking.id}` : 'Book SMC banquet hall for an event'}
+      subtitle={editing ? `Booking #${booking.id}` : 'Book a hall or open area for an event'}
       onClose={onClose}
       footer={(
         <div className="flex w-full flex-wrap items-center justify-between gap-3">
@@ -485,6 +506,7 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
         ...f,
         hall_id: Number(f.hall_id),
         rent: rentVal,
+        discount: Number(f.discount) || 0,
         power_start: Number(f.power_start) || 0,
         power_end: Number(f.power_end) || 0,
         power_units: Number(f.power_units) || 0,
@@ -493,7 +515,7 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
         generators: (f.generator_rows || []).filter(g => g.type).map(g => ({ type: g.type, hours: Number(g.hours) || 0, rate: g.rate })),
         total: Number(f.total) || calculatedTotal,
       }))} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field as="div" label="Choose Hall" className="sm:col-span-2">
+        <Field as="div" label="Choose hall or area" className="sm:col-span-2">
           <div className="grid gap-2 sm:grid-cols-3">
             {halls.map(h => (
               <button
@@ -537,8 +559,11 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
           <Input type="number" min="0" value={f.guests} onChange={e => set('guests', e.target.value)} placeholder="e.g. 300" />
         </Field>
 
-        <Field label="Hall Rent (₹)" hint={`${slotName(f.slot)} base rent`}>
+        <Field label="Hall Rent (₹)" hint={`${slotName(f.slot)} price ${inr(f.list_price || 0)}. Type a lower amount and the discount fills in.`}>
           <Input type="number" min="0" value={f.rent} onChange={e => set('rent', e.target.value)} />
+        </Field>
+        <Field label="Discount (₹)" hint={Number(f.discount) > 0 ? `${inr(f.list_price || 0)} − ${inr(f.discount)} = ${inr(rentVal)}` : 'Off the hall price'}>
+          <Input type="number" min="0" placeholder="0" value={f.discount} onChange={e => set('discount', e.target.value)} />
         </Field>
 
         {/* Power and generator are billed after the event, from the meter reading and hours used */}
@@ -599,7 +624,14 @@ export function HallBookingForm({ booking, halls, defaultHallId, defaultDate, on
             hint={!autoTotal ? 'Custom total entered manually' : editing ? 'Calculated automatically (Rent + Power + Gen)' : 'Hall rent. Power and generator are added on the event day'}>
             <div className="flex gap-2">
               <Input type="number" min="0" className="font-semibold text-lg" value={f.total}
-                onChange={e => { setAutoTotal(false); set('total', e.target.value); }} />
+                onChange={e => {
+                  const typed = e.target.value;
+                  const rent = Number(typed || 0) - powerVal - genVal;
+                  if (typed !== '' && rent >= 0 && rent <= Number(f.list_price || 0)) {
+                    setAutoTotal(true);
+                    setF(p => ({ ...p, total: typed, rent, discount: Number(p.list_price || 0) - rent || '' }));
+                  } else { setAutoTotal(false); set('total', typed); }
+                }} />
               {!autoTotal && (
                 <Button type="button" size="sm" variant="outline" onClick={() => { setAutoTotal(true); set('total', calculatedTotal); }}>
                   Recalculate

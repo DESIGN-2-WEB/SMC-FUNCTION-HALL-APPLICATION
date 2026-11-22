@@ -250,6 +250,11 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
                     Slot: {slotLabel(pkg.hall.slot)} · Date:{' '}
                     {fmtDate(pkg.hall.event_date)}
                   </p>
+                  {Number(pkg.hall.discount) > 0 && (
+                    <p className="text-xs text-emerald-700">
+                      Hall {inr(Number(pkg.hall_amount) + Number(pkg.hall.discount))} − {inr(pkg.hall.discount)} discount = {inr(pkg.hall_amount)}
+                    </p>
+                  )}
                 </div>
                 <Badge tone="green">Hall Booked</Badge>
               </div>
@@ -365,12 +370,16 @@ export default function PackageDetailModal({ packageId, onClose, onRefresh, onSh
                   </div>
                 ))}
               </div>
-              {pkg.supplies.some(s => Number(s.discount) > 0) && (
-                <div className="flex items-center justify-between border-t border-stone-100 pt-1.5 text-xs text-stone-600">
-                  <span>Supplies discount (full set price)</span>
-                  <span className="font-semibold">− {inr(pkg.supplies.reduce((t, s) => t + (Number(s.discount) || 0), 0))}</span>
-                </div>
-              )}
+              {(() => {
+                const adj = pkg.supplies.reduce((t, s) => t + (Number(s.discount) || 0), 0);
+                if (!adj) return null;
+                return (
+                  <div className="flex items-center justify-between border-t border-stone-100 pt-1.5 text-xs text-stone-600">
+                    <span>{adj > 0 ? 'Supplies discount (full set price)' : 'Full set price adjustment'}</span>
+                    <span className="font-semibold">{adj > 0 ? '−' : '+'} {inr(Math.abs(adj))}</span>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -536,7 +545,10 @@ export function printComboBill(pkg, settings) {
   // [item, details, qty, rate, amount]
   const lines = [];
   if (pkg.hall) {
-    lines.push(['Banquet Hall', `${pkg.hall.hall_name} · ${slotLabel(pkg.hall.slot)} · ${fmtDate(pkg.hall.event_date)}`, '1', inr(pkg.hall_amount), Number(pkg.hall_amount) || 0]);
+    const hallDisc = Number(pkg.hall.discount) || 0;
+    lines.push(['Banquet Hall', `${pkg.hall.hall_name} · ${slotLabel(pkg.hall.slot)} · ${fmtDate(pkg.hall.event_date)}`, '1',
+      inr((Number(pkg.hall_amount) || 0) + hallDisc), (Number(pkg.hall_amount) || 0) + hallDisc]);
+    if (hallDisc) lines.push(['Hall discount', '', '', '', -hallDisc]);
     if (Number(pkg.hall.power_amount) > 0)
       lines.push(['Power bill', 'Electricity', `${pkg.hall.power_units} units`, `₹${pkg.hall.power_rate}/unit`, Number(pkg.hall.power_amount)]);
     if (Number(pkg.hall.generator_amount) > 0)
@@ -551,7 +563,7 @@ export function printComboBill(pkg, settings) {
     lines.push([s.supply_name, s.supply_category || 'Supplies', `${s.quantity} ${s.supply_unit || 'pcs'}`, inr(s.rent_rate), (Number(s.total_rent) || 0) + (Number(s.discount) || 0)]);
   }
   const suppliesDiscount = (pkg.supplies || []).reduce((t, s) => t + (Number(s.discount) || 0), 0);
-  if (suppliesDiscount > 0) lines.push(['Supplies discount', 'Full set price', '', '', -suppliesDiscount]);
+  if (suppliesDiscount) lines.push([suppliesDiscount > 0 ? 'Supplies discount' : 'Full set price adjustment', 'Full set price', '', '', -suppliesDiscount]);
   for (const b of pkg.band || []) lines.push(['Sannai Melam', [b.timing, b.team].filter(Boolean).join(' · '), '', '', Number(b.amount) || 0]);
   for (const plan of pkg.decor || []) {
     for (const i of plan.items || []) lines.push([i.name, `Decoration · ${i.area}`, Number(i.qty) === 1 ? '' : `× ${i.qty}`, inr(i.rate), Number(i.amount) || 0]);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { CalendarDays, Check, ChevronDown, ChevronRight, Landmark, Layers, PartyPopper, Pencil, Plus, Search, Trash2, Users as UsersIcon, X, Zap } from 'lucide-react';
+import { CalendarDays, Check, ChevronDown, ChevronRight, Landmark, Layers, PartyPopper, Pencil, Plus, Search, Trash2, Trees, Users as UsersIcon, X, Zap } from 'lucide-react';
 import { useApi, useDebounced, useRemove, useSave } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import { useSettings } from '../settings.jsx';
@@ -131,7 +131,7 @@ export default function Halls() {
   return (
     <>
       <PageHeader
-        title="Banquet Halls"
+        title="Halls & Venues"
         subtitle={`${settings.property_name || 'SMC Function Hall (A/C)'} · ${settings.property_tagline || 'Kalyana Mandapam'} · ${settings.address || 'Palasa – Kasibugga'}${settings.phone ? ` · ${settings.phone}` : ''}`}
         actions={<>
           <Button variant="gold" icon={Plus} onClick={() => setForm({})}>
@@ -142,7 +142,7 @@ export default function Halls() {
           </Button>
           {isAdmin && (
             <>
-              <Button variant="outline" icon={Plus} onClick={() => setHallForm({})}>Add hall</Button>
+              <Button variant="outline" icon={Plus} onClick={() => setHallForm({})}>Add hall or area</Button>
               <Button
                 variant="outline"
                 icon={Layers}
@@ -184,11 +184,11 @@ export default function Halls() {
               <div className="relative flex items-start justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <div className={cn('grid h-14 w-14 place-items-center rounded-2xl', isCombo ? 'bg-gold-400 text-ink-900' : 'bg-ink-900 text-gold-300')}>
-                    <Landmark size={24} />
+                    {h.kind === 'area' ? <Trees size={24} /> : <Landmark size={24} />}
                   </div>
                   <div>
                     <p className={cn('text-[11px] font-semibold tracking-wider uppercase', isCombo ? 'text-gold-300' : 'text-gold-600')}>
-                      {isCombo ? 'Combo package' : h.capacity >= 300 ? 'Big hall' : 'Small hall'}
+                      {isCombo ? 'Combo package' : h.kind === 'area' ? 'Open area' : h.capacity >= 300 ? 'Big hall' : 'Small hall'}
                     </p>
                     <h3 className="font-display text-2xl font-semibold">{h.name}</h3>
                   </div>
@@ -267,7 +267,7 @@ export default function Halls() {
                 </span>
               </div>
               <p className="text-xs text-stone-500">
-                Options available for banquet hall event bookings
+                Options available for hall and venue bookings
               </p>
             </div>
           </div>
@@ -400,8 +400,15 @@ export default function Halls() {
                         <p className="font-medium text-ink-900 group-hover:text-gold-900 transition-colors">{b.customer_name}</p>
                         <p className="text-xs text-stone-500">{b.phone || '—'}</p>
                         {b.package_id && (() => {
+                          // Only what is still on the bill; once every add-on is removed the flag goes
                           const c = comboById[b.package_id];
-                          const parts = c ? [c.rooms_count > 0 && `${c.rooms_count} room${c.rooms_count > 1 ? 's' : ''}`, c.supplies_count > 0 && `${c.supplies_count} supplies`].filter(Boolean) : [];
+                          const parts = c ? [
+                            c.rooms_count > 0 && `${c.rooms_count} room${c.rooms_count > 1 ? 's' : ''}`,
+                            c.supplies_count > 0 && `${c.supplies_count} supplies`,
+                            c.decor_count > 0 && 'decoration',
+                            c.band_count > 0 && 'Sannai Melam',
+                          ].filter(Boolean) : [];
+                          if (!parts.length) return null;
                           return (
                             <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-gold-100 px-2 py-0.5 text-[11px] font-semibold text-gold-800">
                               Hall + add-ons{parts.length ? ` · ${parts.join(' · ')}` : ''}
@@ -512,6 +519,7 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
         rate_full: hall.rate_full ?? 0,
         rate_half: hall.rate_half ?? 0,
         description: hall.description || '',
+        kind: hall.kind === 'area' ? 'area' : 'hall',
         full_time: hall.full_time || '7:00 AM to 3:00 AM (next day)',
         half_time: hall.half_time || '7:00 AM to 3:00 PM',
       };
@@ -528,6 +536,7 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
       rate_full: isCombo && combinedFullRate ? Math.round(combinedFullRate * 0.85) : 0,
       rate_half: isCombo && combinedHalfRate ? Math.round(combinedHalfRate * 0.85) : 0,
       description: defaultDesc,
+      kind: hall?.kind === 'area' ? 'area' : 'hall',
       full_time: '7:00 AM to 3:00 AM (next day)',
       half_time: '7:00 AM to 3:00 PM',
     };
@@ -600,12 +609,12 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
 
     const trimmedName = (f.name || '').trim();
     if (!trimmedName) {
-      return toast(isCombo ? 'Please enter a combo package name' : 'Please enter a hall name', 'error');
+      return toast(isCombo ? 'Please enter a combo package name' : 'Please enter a name', 'error');
     }
 
     if (isCombo) {
       if (selectedHallIds.length < 2) {
-        return toast('Please select at least 2 halls for a combo package', 'error');
+        return toast('Please select at least 2 halls or areas for a combo package', 'error');
       }
       save({
         ...f,
@@ -622,6 +631,7 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
         name: trimmedName,
         is_combo: 0,
         included_hall_ids: '',
+        kind: f.kind === 'area' ? 'area' : 'hall',
         capacity: Number(f.capacity) || 100,
         rate_full: Number(f.rate_full) || 0,
         rate_half: Number(f.rate_half) || 0,
@@ -632,8 +642,8 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
   return (
     <Modal
       size={isCombo ? 'lg' : 'md'}
-      title={hall?.id ? (isCombo ? 'Edit combo package' : 'Edit hall') : (isCombo ? 'Add combo package' : 'Add hall')}
-      subtitle={isCombo ? 'Select existing halls to dynamically combine into a package booking' : 'Configure banquet hall capacity and slot tariffs'}
+      title={hall?.id ? (isCombo ? 'Edit combo package' : 'Edit venue') : (isCombo ? 'Add combo package' : 'Add hall or area')}
+      subtitle={isCombo ? 'Pick the halls and open areas booked together as one package' : 'An indoor hall, or an open area such as the rooftop, parking or ground'}
       onClose={onClose}
       footer={
         <div className="flex w-full items-center justify-between">
@@ -646,7 +656,7 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
             loading={saving}
             onClick={handleSubmit}
           >
-            {hall?.id ? 'Save changes' : isCombo ? 'Create combo package' : 'Create hall'}
+            {hall?.id ? 'Save changes' : isCombo ? 'Create combo package' : 'Add venue'}
           </Button>
         </div>
       }
@@ -659,10 +669,10 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
               <div>
                 <h4 className="font-semibold text-ink-900 text-sm flex items-center gap-1.5">
                   <Layers size={16} className="text-gold-600" />
-                  Select Halls to Include in this Combo
+                  Halls and areas in this combo
                 </h4>
                 <p className="text-xs text-stone-500">
-                  Select 2 or more standalone halls. Booking this combo automatically reserves all selected halls.
+                  Pick 2 or more halls or open areas. Booking this combo reserves all of them.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -772,7 +782,13 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={isCombo ? 'Combo Package Name' : 'Hall name'} className="sm:col-span-2">
+          {!isCombo && (
+            <Field label="Type" as="div" className="sm:col-span-2">
+              <Segmented value={f.kind} onChange={v => set('kind', v)}
+                options={[{ value: 'hall', label: 'Indoor hall' }, { value: 'area', label: 'Open area' }]} />
+            </Field>
+          )}
+          <Field label={isCombo ? 'Combo Package Name' : f.kind === 'area' ? 'Area name' : 'Hall name'} className="sm:col-span-2">
             <Input
               required
               value={f.name}
@@ -780,7 +796,7 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
                 setCustomName(true);
                 set('name', e.target.value);
               }}
-              placeholder={isCombo ? 'e.g. Both Halls Combo or Big + Small Combo' : 'e.g. Big Banquet Hall'}
+              placeholder={isCombo ? 'e.g. Big Hall + Rooftop' : f.kind === 'area' ? 'e.g. Rooftop terrace, Parking area' : 'e.g. Big Banquet Hall'}
             />
           </Field>
 
@@ -843,7 +859,7 @@ function HallForm({ hall, allHalls = [], onClose, onSaved }) {
             <Textarea
               value={f.description}
               onChange={e => set('description', e.target.value)}
-              placeholder={isCombo ? 'e.g. Combo package combining Big and Small banquet halls' : 'Hall features and details'}
+              placeholder={isCombo ? 'e.g. Big hall with the rooftop for dinner' : 'Features and details'}
             />
           </Field>
         </div>

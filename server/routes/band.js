@@ -51,7 +51,8 @@ function parse(b) {
     team: str(b.team).slice(0, 120),
     team_phone: str(b.team_phone).slice(0, 30),
     players: Math.max(0, Math.round(num(b.players))),
-    amount: Math.max(0, Math.round(num(b.amount))),
+    amount: Math.max(0, Math.round(num(b.amount))), // the customer's price
+    team_amount: Math.max(0, Math.round(num(b.team_amount))), // paid to the party
     notes: str(b.notes).slice(0, 500),
   };
   if (!d.customer_name) fail('Customer name is required');
@@ -60,7 +61,7 @@ function parse(b) {
   if (d.hall_booking_id && !get('SELECT id FROM hall_bookings WHERE id = ?', d.hall_booking_id)) fail('That banquet booking no longer exists');
   return d;
 }
-const COLS = ['hall_booking_id', 'customer_name', 'phone', 'event_date', 'timing', 'team', 'team_phone', 'players', 'amount', 'notes'];
+const COLS = ['hall_booking_id', 'customer_name', 'phone', 'event_date', 'timing', 'team', 'team_phone', 'players', 'amount', 'team_amount', 'notes'];
 
 r.get('/', (req, res) => {
   res.json(all(`${SELECT} ORDER BY (b.status = 'booked') DESC, b.event_date DESC, b.id DESC LIMIT 300`));

@@ -101,12 +101,13 @@ function parseBand(raw) {
     amount,
     timing: str(raw.timing).slice(0, 80), team: str(raw.team).slice(0, 120), team_phone: str(raw.team_phone).slice(0, 30),
     players: Math.max(0, Math.round(num(raw.players))), notes: str(raw.notes).slice(0, 500),
+    team_amount: Math.max(0, Math.round(num(raw.team_amount))), // paid to the party, not on the bill
   };
 }
 function insertBand(b, { packageId, hallBookingId, customer_name, phone, event_date }, userId) {
-  const { id } = run(`INSERT INTO band_bookings (package_id, hall_booking_id, customer_name, phone, event_date, timing, team, team_phone, players, amount, notes, created_by)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    packageId, hallBookingId, customer_name, phone, event_date, b.timing, b.team, b.team_phone, b.players, b.amount, b.notes, userId);
+  const { id } = run(`INSERT INTO band_bookings (package_id, hall_booking_id, customer_name, phone, event_date, timing, team, team_phone, players, amount, team_amount, notes, created_by)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    packageId, hallBookingId, customer_name, phone, event_date, b.timing, b.team, b.team_phone, b.players, b.amount, b.team_amount, b.notes, userId);
   setBillNo('band_bookings', id);
 }
 
@@ -222,8 +223,11 @@ r.get('/', (req, res) => {
       u.name AS created_by_name,
       h.name AS hall_name,
       hb.slot AS hall_slot,
-      (SELECT COUNT(*) FROM room_bookings rb WHERE rb.package_id = p.id) AS rooms_count,
+      -- What is still on the bill: cancelled rooms, decoration and Sannai Melam don't count
+      (SELECT COUNT(*) FROM room_bookings rb WHERE rb.package_id = p.id AND rb.status <> 'cancelled') AS rooms_count,
       (SELECT COUNT(*) FROM supply_rentals sr WHERE sr.package_id = p.id) AS supplies_count,
+      (SELECT COUNT(*) FROM decor_plans dp WHERE dp.package_id = p.id AND dp.status <> 'cancelled') AS decor_count,
+      (SELECT COUNT(*) FROM band_bookings bb WHERE bb.package_id = p.id AND bb.status <> 'cancelled') AS band_count,
       (p.total_amount + COALESCE(hb.power_amount, 0) + COALESCE(hb.generator_amount, 0) + ${addonsTotalSql('p')}) AS grand_total,
       MAX(0, p.total_amount + COALESCE(hb.power_amount, 0) + COALESCE(hb.generator_amount, 0) + ${addonsTotalSql('p')} - p.advance_paid) AS balance
     FROM event_packages p
@@ -430,11 +434,11 @@ r.post('/', (req, res) => {
       const hRes = run(`
         INSERT INTO hall_bookings (
           package_id, hall_id, customer_name, phone, event_type, event_date, slot, guests,
-          rent, total, paid, status, notes, referral_name, referral_phone, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)
+          rent, discount, total, paid, status, notes, referral_name, referral_phone, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)
       `,
         packageId, hall.id, customer_name, phone, event_type, event_date, slot, guests,
-        hall_amount, hall_amount, advance_paid, notes ? `Part of Package #${packageId} · ${notes}` : `Part of Package #${packageId}`,
+        hall_amount, Math.max(0, Math.round(num(req.body.hall_discount))), hall_amount, advance_paid, notes ? `Part of Package #${packageId} · ${notes}` : `Part of Package #${packageId}`,
         referral_name, referral_phone, req.user.id
       );
       hallBookingId = hRes.id;

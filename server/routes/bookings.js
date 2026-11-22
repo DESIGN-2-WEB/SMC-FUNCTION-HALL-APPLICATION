@@ -86,7 +86,7 @@ const KINDS = {
     fields: [
       'hall_id', 'customer_name', 'phone', 'event_type', 'event_date', 'slot', 'guests',
       'rent', 'power_start', 'power_end', 'power_units', 'power_rate', 'power_amount',
-      'generator_type', 'generator_hours', 'generator_rate', 'generator_amount', 'generator_list',
+      'generator_type', 'generator_hours', 'generator_rate', 'generator_amount', 'generator_list', 'discount',
       'total', 'notes', 'referral_name', 'referral_phone',
     ],
     initialStatus: () => 'confirmed', // no tentative holds: every new hall booking is confirmed
@@ -119,6 +119,7 @@ const KINDS = {
         event_date: str(b.event_date), slot: SLOT_NAMES[b.slot] ? b.slot : 'full', guests: Math.max(0, Math.round(num(b.guests))),
         rent, power_start, power_end, power_units, power_rate, power_amount,
         ...gen,
+        discount: Math.max(0, Math.round(num(b.discount))), // already taken off the rent
         total: Math.max(0, total), notes: str(b.notes),
         // Optional: who referred this customer
         referral_name: str(b.referral_name).slice(0, 100), referral_phone: str(b.referral_phone).slice(0, 30),

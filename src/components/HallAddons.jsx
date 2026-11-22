@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { BedDouble, Boxes, Drum, Flower2, Search, X } from 'lucide-react';
 import { useApi } from '../hooks.js';
 import { useSettings } from '../settings.jsx';
-import { Button, Field, Input, cn } from './ui.jsx';
+import { Field, Input, cn } from './ui.jsx';
 import { useFullSetDiscount } from '../fullSet.js';
 import { DatePicker } from './pickers.jsx';
 import { addDays, inr, nights } from '../utils.js';
 import { DecorLinesEditor, decorAreas, decorItemsPayload, decorSubtotal } from './Decorations.jsx';
 import { PartyPicker } from './SannaiParties.jsx';
+import { FullSetPriceField, FullSetToggle } from './FullSetControls.jsx';
 
 /*
  * Extras a customer can add while booking a hall: rooms, supplies and decoration.
@@ -25,7 +26,7 @@ export function useHallAddons(eventDate) {
   const decorItems = useApi('/decorations/items');
 
   const [open, setOpen] = useState({ rooms: false, supplies: false, decor: false, band: false });
-  const [band, setBand] = useState({ timing: '', team: '', team_phone: '', players: '', amount: '' });
+  const [band, setBand] = useState({ timing: '', team: '', team_phone: '', players: '', amount: '', team_amount: '' });
   // Rooms default to the event day until the next day; they follow the event date until changed
   const [dates, setDates] = useState({ in: eventDate, out: addDays(eventDate, 1), touched: false });
   useEffect(() => {
@@ -53,6 +54,7 @@ export function useHallAddons(eventDate) {
     for (const s of inStock) if (!(n(next[s.id]) > 0)) next[s.id] = 1;
     return next;
   });
+  const clearAllSupplies = () => setSupplyQty({});
   const decorSub = open.decor ? decorSubtotal(decorLines) : 0;
   const decorTotal = open.decor ? Math.max(0, decorSub - Math.min(decorSub, n(decorDiscount))) : 0;
   const bandTotal = open.band ? n(band.amount) : 0;
@@ -73,7 +75,7 @@ export function useHallAddons(eventDate) {
     }),
     supplies_discount: open.supplies ? fullSet.discount : 0,
     ...(decorPayload.length ? { decoration: { items: decorPayload, discount: n(decorDiscount) } } : {}),
-    ...(bandTotal > 0 ? { band: { ...band, amount: n(band.amount), players: n(band.players) } } : {}),
+    ...(bandTotal > 0 ? { band: { ...band, amount: n(band.amount), team_amount: n(band.team_amount), players: n(band.players) } } : {}),
   });
 
   /** Problems to fix before saving, or null. */
@@ -90,7 +92,7 @@ export function useHallAddons(eventDate) {
   return {
     rooms, roomBookings, supplies, decorItems,
     open, setOpen, dates, setDates, nightCount,
-    roomRates, setRoomRates, supplyQty, setSupplyQty, suppliesItemsTotal, inStock, allSupplies, fullSet, selectAllSupplies,
+    roomRates, setRoomRates, supplyQty, setSupplyQty, suppliesItemsTotal, inStock, allSupplies, fullSet, clearAllSupplies, selectAllSupplies,
     decorLines, setDecorLines, decorDiscount, setDecorDiscount,
     band, setBand, eventDate,
     roomsTotal, suppliesTotal, decorTotal, bandTotal, total: roomsTotal + suppliesTotal + decorTotal + bandTotal,
@@ -140,11 +142,12 @@ export default function HallAddons({ addons: a }) {
         <Section title="Sannai Melam" amount={a.bandTotal} onClose={() => toggle('band')}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Programme timing"><Input value={a.band.timing} onChange={e => a.setBand(b => ({ ...b, timing: e.target.value }))} placeholder="Baraat 6 PM" /></Field>
-            <Field label="Price (₹)"><Input type="number" min="1" value={a.band.amount} onChange={e => a.setBand(b => ({ ...b, amount: e.target.value }))} placeholder="15000" /></Field>
+            <Field label="Customer price (₹)" hint="On the customer's bill"><Input type="number" min="1" value={a.band.amount} onChange={e => a.setBand(b => ({ ...b, amount: e.target.value }))} placeholder="15000" /></Field>
+            <Field label="Party price (₹)" hint="Paid to the party · never shown to the customer"><Input type="number" min="0" value={a.band.team_amount} onChange={e => a.setBand(b => ({ ...b, team_amount: e.target.value }))} placeholder="11000" /></Field>
             <Field label="Party" as="div" className="sm:col-span-2" hint="A party marked booked is already taken on this date">
               <PartyPicker value={a.band.team} date={a.eventDate}
                 onPick={p => a.setBand(b => (p
-                  ? { ...b, team: p.name, team_phone: p.phone || '', players: p.players || b.players, amount: p.price || b.amount }
+                  ? { ...b, team: p.name, team_phone: p.phone || '', players: p.players || b.players, amount: p.price || b.amount, team_amount: p.team_price || b.team_amount }
                   : { ...b, team: '', team_phone: '' }))} />
             </Field>
             <Field label="Team name"><Input value={a.band.team} onChange={e => a.setBand(b => ({ ...b, team: e.target.value }))} placeholder="Party name" /></Field>
@@ -244,11 +247,7 @@ function SuppliesSection({ a, onClose }) {
           <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-stone-400" />
           <Input className="pl-9" value={q} onChange={e => setQ(e.target.value)} placeholder="Search chairs, vessels, stoves…" />
         </div>
-        {!a.allSupplies && (
-          <Button type="button" variant="outline" onClick={a.selectAllSupplies}>
-            Select all items{a.fullSet.price ? ` (full set ${inr(a.fullSet.price)})` : ''}
-          </Button>
-        )}
+        <FullSetToggle fullSet={a.fullSet} inStockCount={a.inStock.length} onTick={a.selectAllSupplies} onUntick={a.clearAllSupplies} />
       </div>
       <div className="max-h-72 divide-y divide-stone-100 overflow-y-auto rounded-xl border border-stone-200">
         {shown.map(s => {
@@ -270,20 +269,7 @@ function SuppliesSection({ a, onClose }) {
         {!shown.length && <p className="px-3 py-4 text-center text-sm text-stone-500">No items match "{q}".</p>}
       </div>
       {!q && list.length > matches.length && <p className="mt-2 text-xs text-stone-400">Showing {matches.length} of {list.length}. Search to find more.</p>}
-      {a.allSupplies && a.fullSet.price > 0 && (
-        <p className="mt-3 rounded-lg bg-gold-100/70 px-3 py-2 text-xs font-medium text-gold-900">
-          All {a.inStock.length} items selected: full set price {inr(a.fullSet.price)} applies.
-        </p>
-      )}
-      <div className="mt-3 flex flex-wrap items-end gap-2">
-        <Field label="Supplies discount (₹)" className="w-44"
-          hint={a.fullSet.fullSetApplied ? `Items ${inr(a.suppliesItemsTotal)}` : a.fullSet.typedByHand ? 'Typed by hand' : undefined}>
-          <Input type="number" min="0" step="1" placeholder="0" value={a.fullSet.value} onChange={e => a.fullSet.setValue(e.target.value)} />
-        </Field>
-        {a.fullSet.typedByHand && a.allSupplies && (
-          <Button type="button" size="sm" variant="outline" onClick={a.fullSet.reset}>Use full set price</Button>
-        )}
-      </div>
+      <FullSetPriceField fullSet={a.fullSet} itemsTotal={a.suppliesItemsTotal} className="mt-3" />
     </Section>
   );
 }

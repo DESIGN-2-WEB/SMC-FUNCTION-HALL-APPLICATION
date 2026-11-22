@@ -113,10 +113,15 @@ export default function OccupancyCalendar() {
                   className={cn('relative flex min-h-16 min-w-0 cursor-pointer flex-col border-r border-b border-stone-100 p-1.5 text-left transition hover:brightness-95 sm:min-h-24 sm:p-2 [&:nth-child(7n)]:border-r-0',
                     inMonth ? HEAT[level] : 'bg-stone-50 opacity-50',
                     selected === d && 'z-10 ring-2 ring-ink-900 ring-inset')}>
+                  {/* Today: a gold strip and gold date badge (the dark border is the selected day) */}
+                  {d === t && <span className="absolute inset-x-0 top-0 h-1 bg-gold-500" aria-hidden="true" />}
                   <span className="flex flex-wrap items-start justify-between gap-0.5">
-                    <span className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-semibold',
-                      d === t ? 'bg-ink-900 text-gold-300' : 'text-ink-900')}>
-                      {Number(d.slice(8))}
+                    <span className="flex items-center gap-1">
+                      <span className={cn('grid h-6 min-w-6 shrink-0 place-items-center rounded-full px-1 text-xs font-semibold',
+                        d === t ? 'bg-gold-500 text-white shadow-sm ring-2 ring-gold-200' : 'text-ink-900')}>
+                        {Number(d.slice(8))}
+                      </span>
+                      {d === t && <span className="hidden text-[10px] font-bold uppercase tracking-wide text-gold-700 sm:inline">Today</span>}
                     </span>
                     {inMonth && stays.length > 0 && (
                       <span className="inline-flex items-center gap-0.5 rounded-md bg-white/90 px-0.5 py-px text-[10px] font-bold text-ink-800 ring-1 ring-stone-300 sm:px-1">

@@ -84,6 +84,11 @@ export default function BandMelamTab({ isAdmin, hallBookings }) {
                   </div>
                   <div className="text-right">
                     <p className="font-display text-lg font-semibold text-ink-900">{inr(b.amount)}</p>
+                    {Number(b.team_amount) > 0 && (
+                      <p className="text-[11px] text-stone-500">
+                        Party {inr(b.team_amount)}{isAdmin && <> · you keep <b className="text-ink-900">{inr(b.amount - b.team_amount)}</b></>}
+                      </p>
+                    )}
                     {b.package_id
                       ? <p className="text-[11px] text-gold-800">Paid on the hall bill</p>
                       : <p className={balance > 0 ? 'text-[11px] text-rose-600' : 'text-[11px] text-emerald-600'}>{balance > 0 ? `${inr(balance)} due` : 'Paid'}</p>}
@@ -153,6 +158,7 @@ function BandForm({ booking, hallBookings, onAddParties, onClose, onSaved }) {
     team_phone: booking.team_phone || '',
     players: booking.players || '',
     amount: booking.amount || '',
+    team_amount: booking.team_amount || '',
     notes: booking.notes || '',
     advance: '',
     method: 'Cash',
@@ -170,7 +176,7 @@ function BandForm({ booking, hallBookings, onAddParties, onClose, onSaved }) {
     try {
       const saved = await api(editing ? `/band/${booking.id}` : '/band', {
         method: editing ? 'PUT' : 'POST',
-        body: { ...f, hall_booking_id: f.hall_booking_id || null, amount: Number(f.amount) || 0, players: Number(f.players) || 0, advance: Number(f.advance) || 0 },
+        body: { ...f, hall_booking_id: f.hall_booking_id || null, amount: Number(f.amount) || 0, team_amount: Number(f.team_amount) || 0, players: Number(f.players) || 0, advance: Number(f.advance) || 0 },
       });
       toast(saved.combo_bill_no ? `${editing ? 'Updated' : 'Booked'} · on the hall's combined bill ${saved.combo_bill_no}` : editing ? 'Sannai Melam updated' : 'Sannai Melam booked');
       onSaved();
@@ -200,7 +206,7 @@ function BandForm({ booking, hallBookings, onAddParties, onClose, onSaved }) {
         <Field label="Party" as="div" className="sm:col-span-2" hint="A party marked booked is already taken on this date">
           <PartyPicker value={f.team} date={f.event_date} excludeId={booking.id} onAdd={onAddParties}
             onPick={p => setF(prev => (p
-              ? { ...prev, team: p.name, team_phone: p.phone || '', players: p.players || prev.players, amount: p.price || prev.amount }
+              ? { ...prev, team: p.name, team_phone: p.phone || '', players: p.players || prev.players, amount: p.price || prev.amount, team_amount: p.team_price || prev.team_amount }
               : { ...prev, team: '', team_phone: '' }))} />
         </Field>
         <Field label="Team name"><Input value={f.team} onChange={e => set('team', e.target.value)} placeholder="Party name" /></Field>
@@ -208,7 +214,8 @@ function BandForm({ booking, hallBookings, onAddParties, onClose, onSaved }) {
           <Input type="tel" value={f.team_phone} onChange={e => set('team_phone', e.target.value)} placeholder="Team leader's mobile" />
         </Field>
         <Field label="Players (optional)"><Input type="number" min="0" value={f.players} onChange={e => set('players', e.target.value)} placeholder="8" /></Field>
-        <Field label="Price (₹)"><Input type="number" min="1" required value={f.amount} onChange={e => set('amount', e.target.value)} placeholder="15000" /></Field>
+        <Field label="Customer price (₹)" hint="On the customer's bill"><Input type="number" min="1" required value={f.amount} onChange={e => set('amount', e.target.value)} placeholder="15000" /></Field>
+        <Field label="Party price (₹)" hint="Paid to the party · never shown to the customer"><Input type="number" min="0" value={f.team_amount} onChange={e => set('team_amount', e.target.value)} placeholder="11000" /></Field>
         {!editing && (
           <>
             <Field label="Advance received (₹)"><Input type="number" min="0" value={f.advance} onChange={e => set('advance', e.target.value)} placeholder="0" /></Field>

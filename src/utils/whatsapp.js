@@ -114,6 +114,8 @@ export function buildRoomMessage(b, settings, type = 'booking') {
   const checkedIn = b.status === 'checked_in';
   const when = type === 'check_out' ? 'soon' : checkedIn ? 'check_out' : 'check_in';
   const status = paymentStatus({ total: Number(b.total) || 0, paid: Number(b.paid) || 0, when });
+  const roomDisc = Number(b.discount) || 0;
+  if (roomDisc > 0) status.bill = [['Room rent', inr((Number(b.total) || 0) + roomDisc)], ['Discount', `- ${inr(roomDisc)}`], ...status.bill];
   const details = [
     ['Bill No', b.bill_no],
     ['Room', b.room_name],
@@ -173,9 +175,13 @@ export function buildHallMessage(b, settings, type = 'booking') {
     ['Timing', timing(b.slot, settings, b)],
     ...(b.guests ? [['Guests', b.guests]] : []),
   ];
+  const hallDisc = Number(b.discount) || 0;
   const bill = [
-    // the rent line only when power or generator were added on top of it
-    ...(Number(b.power_amount) > 0 || Number(b.generator_amount) > 0 ? [['Hall rent', inr(b.rent || b.total)]] : []),
+    // with a discount: the hall price and the discount; otherwise the rent line only when power
+    // or generator were added on top of it
+    ...(hallDisc > 0
+      ? [['Hall rent', inr((Number(b.rent) || 0) + hallDisc)], ['Discount', `- ${inr(hallDisc)}`]]
+      : Number(b.power_amount) > 0 || Number(b.generator_amount) > 0 ? [['Hall rent', inr(b.rent || b.total)]] : []),
     ...(Number(b.power_amount) > 0 ? [['Power', `${inr(b.power_amount)} (${b.power_units} units × ₹${b.power_rate || 15})`]] : []),
     ...(Number(b.generator_amount) > 0 ? [['Generator', `${inr(b.generator_amount)} (${generatorText(b)})`]] : []),
     ...status.bill,
@@ -313,7 +319,11 @@ export function buildBulkRentalMessage(order, settings) {
       ['Dispatched on', fmtDate(order.rent_date || today())],
       ...(order.expected_return_date ? [['Return by', fmtDate(order.expected_return_date)]] : []),
     ],
-    bill: [...(discount > 0 ? [['Items', inr(total + discount)], ['Discount (full set)', `- ${inr(discount)}`]] : []), ...status.bill],
+    bill: [
+      ...(discount > 0 ? [['Items', inr(total + discount)], ['Discount (full set)', `- ${inr(discount)}`]] : []),
+      ...(discount < 0 ? [['Items', inr(total + discount)], ['Full set price', inr(total)]] : []),
+      ...status.bill,
+    ],
     en: [`Here are the catering items sent for your function:\n${list}`, status.en],
     te: ['మీ వేడుక కోసం పంపిన సామాగ్రి వివరాలు పైన ఇవ్వబడ్డాయి.', status.te],
   });
@@ -369,7 +379,7 @@ export function buildBandMessage(b, settings) {
   });
 }
 
-/** Sent to the sannai team: when and where to perform (no money in it). */
+/** Sent to the sannai team: when and where to perform, and their own amount (never the customer's price). */
 export function buildBandTeamMessage(b, settings) {
   return compose(settings, {
     name: b.team || 'Sannai team', detailsTitle: 'Programme details',
@@ -379,6 +389,7 @@ export function buildBandTeamMessage(b, settings) {
       ['Programme timing', b.timing || 'To be confirmed'],
       ...(b.hall_name ? [['Venue', b.hall_name]] : []),
       ...(Number(b.players) ? [['Players', b.players]] : []),
+      ...(Number(b.team_amount) > 0 ? [['Your amount', inr(b.team_amount)]] : []),
       ...(b.phone ? [['Customer phone', b.phone]] : []),
       ...(b.notes ? [['Notes', b.notes]] : []),
     ],

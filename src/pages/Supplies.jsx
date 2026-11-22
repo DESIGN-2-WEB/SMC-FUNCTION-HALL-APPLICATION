@@ -13,7 +13,8 @@ import {
 import { Combobox, Select } from '../components/pickers.jsx';
 import { addDays, fmtDate, fmtDateTime, inr, today } from '../utils.js';
 import WhatsAppModal, { WhatsAppIcon } from '../components/WhatsAppModal.jsx';
-import { useFullSetDiscount } from '../fullSet.js';
+import { fullSetNote, useFullSetDiscount } from '../fullSet.js';
+import { FullSetPriceField, FullSetToggle } from '../components/FullSetControls.jsx';
 
 const DEFAULT_SUPPLY_CATEGORIES = [
   'Cooking Vessels',
@@ -1298,17 +1299,8 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
                 options={itemOptions}
               />
             </div>
-            {!allSelected && (
-              <Button type="button" variant="outline" icon={Plus} onClick={addAllItems}>
-                Select all items{fullSet.price ? ` (full set ${inr(fullSet.price)})` : ''}
-              </Button>
-            )}
+            <FullSetToggle fullSet={fullSet} inStockCount={inStock.length} onTick={addAllItems} onUntick={() => setSelectedItems([])} />
           </div>
-          {allSelected && fullSet.price > 0 && (
-            <p className="rounded-lg bg-gold-100/70 px-3 py-2 text-xs font-medium text-gold-900">
-              All {inStock.length} items selected: full set price {inr(fullSet.price)} applies. You can change the discount below.
-            </p>
-          )}
 
           {/* Rented Items List */}
           {selectedItems.length > 0 ? (
@@ -1414,23 +1406,13 @@ function BulkRentModal({ initialItem, items = [], activeBookings = [], onClose, 
               <span className="rounded-full bg-gold-100 px-3 py-1 text-xs font-bold text-gold-900">
                 Grand Total: {inr(totalRent)}
               </span>
-              {fullSet.discount > 0 && (
-                <p className="mt-1 text-[11px] text-stone-500">Items {inr(itemsTotal)} − discount {inr(fullSet.discount)}</p>
+              {fullSet.discount !== 0 && (
+                <p className="mt-1 text-[11px] text-stone-500">{fullSetNote(fullSet, itemsTotal, inr)}</p>
               )}
             </div>
           </div>
 
-          <Field label="Discount (₹)" className="sm:max-w-xs"
-            hint={fullSet.fullSetApplied ? `Full set price ${inr(fullSet.price)} (items ${inr(itemsTotal)})`
-              : fullSet.typedByHand ? 'Typed by hand' : allSelected ? 'Items total is already within the full set price' : 'Select all items for the full set price, or type a discount'}>
-            <div className="flex gap-2">
-              <Input type="number" min="0" step="1" placeholder="0" className="bg-white font-medium"
-                value={fullSet.value} onChange={e => fullSet.setValue(e.target.value)} />
-              {fullSet.typedByHand && allSelected && (
-                <Button type="button" size="sm" variant="outline" onClick={fullSet.reset}>Use full set price</Button>
-              )}
-            </div>
-          </Field>
+          <FullSetPriceField fullSet={fullSet} itemsTotal={itemsTotal} />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

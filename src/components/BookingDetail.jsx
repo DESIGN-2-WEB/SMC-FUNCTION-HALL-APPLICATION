@@ -261,6 +261,9 @@ export default function BookingDetail({ kind, id, onClose, onChanged, onEdit, on
               <p className="text-[11px] text-stone-500 uppercase tracking-wider font-semibold">Hall Rent</p>
               <p className="font-semibold text-ink-900 mt-0.5">{inr(b.rent || b.total)}</p>
               <p className="text-[11px] text-stone-400">{slotName(b.slot)}</p>
+              {Number(b.discount) > 0 && (
+                <p className="text-[11px] text-emerald-700">{inr(Number(b.rent) + Number(b.discount))} − {inr(b.discount)} discount</p>
+              )}
             </div>
             <div className="rounded-xl bg-white p-2.5 border border-stone-200">
               <p className="text-[11px] text-stone-500 uppercase tracking-wider font-semibold">Power Bill</p>
@@ -496,7 +499,9 @@ function printReceipt(kind, b, settings) {
         ['Event', b.event_type || '—'],
         ['Date', fmtDate(b.event_date)],
         ['Expected guests', b.guests || '—'],
-        ['Base Hall Rent', inr(b.rent || b.total)],
+        ...(Number(b.discount) > 0
+          ? [['Hall Price', inr(Number(b.rent) + Number(b.discount))], ['Discount', `-${inr(b.discount)}`], ['Hall Rent', inr(b.rent)]]
+          : [['Base Hall Rent', inr(b.rent || b.total)]]),
         ...(b.power_amount > 0 || b.power_units > 0 ? [['Power Bill', `${inr(b.power_amount)} (${b.power_units} units @ ₹${b.power_rate || settings?.power_rate || 15}/unit${b.power_end > b.power_start ? ` [Meter: ${b.power_start} → ${b.power_end}]` : ''})`]] : []),
         ...(b.generator_amount > 0 || b.generator_hours > 0 ? [['Generator Bill', `${inr(b.generator_amount)} (${generatorText(b)})`]] : []),
       ];

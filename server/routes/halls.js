@@ -18,13 +18,14 @@ const parse = b => {
     name: str(b.name), capacity: Math.max(1, num(b.capacity, 100)), rate_full: num(b.rate_full),
     rate_half: num(b.rate_half), description: str(b.description),
     is_combo, included_hall_ids,
+    kind: b.kind === 'area' && !is_combo ? 'area' : 'hall', // indoor hall or open area
     full_time: str(b.full_time).slice(0, 60) || '7:00 AM to 3:00 AM (next day)', half_time: str(b.half_time).slice(0, 60) || '7:00 AM to 3:00 PM',
   };
-  if (!d.name) fail('Hall name is required');
+  if (!d.name) fail('Name is required');
   if (is_combo) {
     let ids = [];
     try { ids = JSON.parse(included_hall_ids || '[]'); } catch {}
-    if (!Array.isArray(ids) || ids.length < 2) fail('Please select at least 2 halls for a combo package');
+    if (!Array.isArray(ids) || ids.length < 2) fail('Please select at least 2 halls or areas for a combo package');
   }
   if (d.rate_full < 0 || d.rate_half < 0) fail('Rates cannot be negative');
   return d;
@@ -33,14 +34,15 @@ const load = id => found(get('SELECT * FROM halls WHERE id = ?', id), 'Hall');
 
 r.get('/', (req, res) => {
   const t = today();
-  const allHalls = all('SELECT * FROM halls ORDER BY is_combo DESC, capacity DESC');
+  // Combos first, then indoor halls, then open areas
+  const allHalls = all("SELECT * FROM halls ORDER BY is_combo DESC, kind = 'area', capacity DESC");
   res.json(allHalls.map(h => {
     let included = [];
     if (h.is_combo && h.included_hall_ids) {
       try {
         const ids = JSON.parse(h.included_hall_ids);
         if (Array.isArray(ids) && ids.length) {
-          included = all(`SELECT id, name, capacity, rate_full, rate_half FROM halls WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids);
+          included = all(`SELECT id, name, kind, capacity, rate_full, rate_half FROM halls WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids);
         }
       } catch {}
     }
@@ -57,17 +59,17 @@ r.get('/', (req, res) => {
 
 r.post('/', requireAdmin, (req, res) => {
   const d = parse(req.body);
-  const { id } = run('INSERT INTO halls (name, capacity, rate_full, rate_half, description, is_combo, included_hall_ids, full_time, half_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    d.name, d.capacity, d.rate_full, d.rate_half, d.description, d.is_combo, d.included_hall_ids, d.full_time, d.half_time);
-  log(req.user.id, d.is_combo ? 'combo package added' : 'hall added', d.name);
+  const { id } = run('INSERT INTO halls (name, capacity, rate_full, rate_half, description, is_combo, included_hall_ids, full_time, half_time, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    d.name, d.capacity, d.rate_full, d.rate_half, d.description, d.is_combo, d.included_hall_ids, d.full_time, d.half_time, d.kind);
+  log(req.user.id, d.is_combo ? 'combo package added' : d.kind === 'area' ? 'open area added' : 'hall added', d.name);
   res.status(201).json({ id });
 });
 
 r.put('/:id', requireAdmin, (req, res) => {
   const hall = load(req.params.id);
   const d = parse(req.body);
-  run('UPDATE halls SET name = ?, capacity = ?, rate_full = ?, rate_half = ?, description = ?, is_combo = ?, included_hall_ids = ?, full_time = ?, half_time = ? WHERE id = ?',
-    d.name, d.capacity, d.rate_full, d.rate_half, d.description, d.is_combo, d.included_hall_ids, d.full_time, d.half_time, hall.id);
+  run('UPDATE halls SET name = ?, capacity = ?, rate_full = ?, rate_half = ?, description = ?, is_combo = ?, included_hall_ids = ?, full_time = ?, half_time = ?, kind = ? WHERE id = ?',
+    d.name, d.capacity, d.rate_full, d.rate_half, d.description, d.is_combo, d.included_hall_ids, d.full_time, d.half_time, d.kind, hall.id);
   log(req.user.id, d.is_combo ? 'combo package updated' : 'hall updated', `${d.name} · full ${inr(d.rate_full)} · half ${inr(d.rate_half)}`);
   res.json({ ok: true });
 });

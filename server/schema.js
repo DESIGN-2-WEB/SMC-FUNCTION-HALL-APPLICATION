@@ -74,6 +74,7 @@ export function migrate() {
     generator_rate REAL NOT NULL DEFAULT 0,
     generator_amount REAL NOT NULL DEFAULT 0,
     generator_list TEXT NOT NULL DEFAULT '',
+    discount REAL NOT NULL DEFAULT 0,
     total REAL NOT NULL DEFAULT 0,
     paid REAL NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'confirmed',
@@ -142,6 +143,7 @@ export function migrate() {
     ['generator_rate', 'REAL NOT NULL DEFAULT 0'],
     ['generator_amount', 'REAL NOT NULL DEFAULT 0'],
     ['generator_list', "TEXT NOT NULL DEFAULT ''"], // every generator used, when more than one ran (JSON)
+    ['discount', 'REAL NOT NULL DEFAULT 0'], // off the hall's price: rent is what is charged, price = rent + discount
     ['referral_name', "TEXT NOT NULL DEFAULT ''"], // who referred the customer (optional)
     ['referral_phone', "TEXT NOT NULL DEFAULT ''"],
   ];
@@ -170,6 +172,7 @@ export function migrate() {
     ['included_hall_ids', "TEXT NOT NULL DEFAULT ''"],
     ['full_time', "TEXT NOT NULL DEFAULT ''"], // this hall's full / half day timings
     ['half_time', "TEXT NOT NULL DEFAULT ''"],
+    ['kind', "TEXT NOT NULL DEFAULT 'hall'"], // 'hall' (indoor) or 'area' (rooftop, parking, open ground...)
   ];
   for (const [col, def] of newHCols) {
     if (!hCols.has(col)) {
@@ -371,6 +374,9 @@ export function migrate() {
   // The sannai team's phone, for sending them the programme timing on WhatsApp
   const bandCols = new Set(db.prepare('PRAGMA table_info(band_bookings)').all().map(c => c.name));
   if (!bandCols.has('team_phone')) db.exec("ALTER TABLE band_bookings ADD COLUMN team_phone TEXT NOT NULL DEFAULT ''");
+  // Two prices: `amount` is the customer's price (on their bill); `team_amount` is what the
+  // Sannai party is paid (kept for the hall's own records, never shown to the customer)
+  if (!bandCols.has('team_amount')) db.exec('ALTER TABLE band_bookings ADD COLUMN team_amount REAL NOT NULL DEFAULT 0');
   // A Sannai Melam booked with a hall is on that combo's one bill (paid there)
   if (!bandCols.has('package_id'))
     db.exec('ALTER TABLE band_bookings ADD COLUMN package_id INTEGER REFERENCES event_packages(id) ON DELETE SET NULL');
@@ -580,7 +586,7 @@ export const DEFAULT_SETTINGS = {
   hall_half_time: '7:00 AM to 3:00 PM',
   decor_areas: 'Stage, Entrance, Walkway, Photo booths, Main outdoor staircase',
   supplies_full_set_price: '8000', // price when every supply item is taken together
-  sannai_parties: '[]', // Sannai Melam teams the hall works with: [{ name, phone, players, price }]
+  sannai_parties: '[]', // Sannai Melam teams: [{ name, phone, players, price (customer), team_price (party) }]
 };
 
 // Settings of the removed WhatsApp API option (Meta, Twilio, webhook). Messages now always
